@@ -12,4 +12,3 @@ const PackageSchema = new mongoose.Schema({
 
 module.exports = mongoose.model('Package_details', PackageSchema);
 
-const Name = mongoose.model('Package_details', PackageSchema);

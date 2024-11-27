@@ -5,7 +5,6 @@ const dotenv = require('dotenv');
 
 const Package_Tracking = require('../Package_tacking/Package_Track/Package_Tracking');
 
-
 dotenv.config();
 
 const app = express();
@@ -15,7 +14,6 @@ app.use(express.static('web'));
 
 
 app.use(bodyParser.json());
-
 
 app.use('/api/packages', Package_Tracking);
 

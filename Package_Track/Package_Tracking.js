@@ -3,13 +3,14 @@ const Package = require('../Package_detatils/Package_details');
 const Package_Tracking = express.Router();
 
 
-Package_Tracking.post('/', async (req, res) => {
+Package_Tracking.post('/add', async (req, res) => {
     try {
         const newPackage = new Package(req.body);
         const savedPackage = await newPackage.save();
         res.status(201).json(savedPackage);
     } catch (err) {
         res.status(400).json({ error: err.message });
+          
     }
 });
 
