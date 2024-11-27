@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const PackageSchema = new mongoose.Schema({
+    Number: { type: Number, required: true },
     Package_Name: { type: String, required: true },
     Send_Date: { type: Date, required: true },
     Deliver_From: { type: String, required: true },

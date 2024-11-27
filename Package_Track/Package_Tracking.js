@@ -26,10 +26,10 @@ Package_Tracking.get('/', async (req, res) => {
 Package_Tracking.get('/:id', async (req, res) => {
     try {
         const package = await Package.findById(req.params.id);
-        if (!package) {
-            return res.status(404).json({ error: "Package not found" });
+        if (package===null) {
+            res.status(404).json({ error: "Package not found" });
         }
-        res.status(200).json;
+        res.status(200).json(package);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
