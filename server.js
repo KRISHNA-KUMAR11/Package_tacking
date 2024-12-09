@@ -7,6 +7,8 @@ const errorHandling = require('./middleware/errorhandling');
 const swaggerJsdoc = require('swagger-jsdoc');
 const swaggerUi = require('swagger-ui-express');
 const swaggerOptions = require('./swaggerDef');
+const cors = require('cors');
+
 
 
 
@@ -28,6 +30,11 @@ mongoose
     process.exit(1);
   }
 );
+
+app.use (cors({
+  origin: "http://localhost:5000",
+}));
+
 
 // Swagger setup
 const swaggerDocs = swaggerJsdoc(swaggerOptions);
