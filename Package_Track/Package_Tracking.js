@@ -1,5 +1,6 @@
 const express = require('express');
 const Package = require('../Package_detatils/Package_details');
+const Recipient = require('../Package_detatils/Recipient');
 const Package_Tracking = express.Router();
 
 
@@ -13,7 +14,7 @@ const Package_Tracking = express.Router();
  *         - TrackingNumber
  *         - Status
  *         - SenderName
- *         - RecipientName
+ *         - RecipientId
  *         - Origin
  *         - Destination
  *         - Package_weight
@@ -29,7 +30,7 @@ const Package_Tracking = express.Router();
  *         SenderName:
  *           type: string
  *           description: Full name of the sender
- *         RecipientName:
+ *         RecipientId:
  *           type: string
  *           description: Full name of the recipient
  *         Origin:
@@ -45,15 +46,22 @@ const Package_Tracking = express.Router();
  *           type: number
  *           description: Price of the package
  *       example:
- *         TrackingNumber: 7
+ *         TrackingNumber: 1
  *         Status: "in-transit"
- *         SenderName: "Revanth"
- *         RecipientName: "Rohit"
+ *         SenderName: "Krishna"
+ *         RecipientId: "001"
  *         Origin: "Pune"
  *         Destination: "Bangalore"
  *         Description: "Mobile"
  *         Package_weight: 0.71
  *         Price: 500
+ */
+
+/**
+ * @swagger
+ * tags:
+ *   name: Packages
+ *   description: API for managing Packages
  */
 
 /**
@@ -85,13 +93,19 @@ const Package_Tracking = express.Router();
 // Create a new package
 Package_Tracking.post('/add', async (req, res, next) => {
     try {
-      const package = new Package(req.body);
-      await package.save();
+      const { TrackingNumber, Status, SenderName, RecipientId, Origin, Destination, Description, Package_weight, Price } = req.body;
+      const recipient = await Recipient.findById(RecipientId);
+      if (recipient===null) {
+        return res.status(404).json({ message: 'Recipient not found' });
+      }
+      const newPackage = new Package(req.body);
+      await newPackage.save();
       res.status(201).json({
         success: true,
         message: 'Package created successfully!',
-        data: package,
+        data: newPackage,
       });
+      
     } catch (error) {
       return next(error);
     }
@@ -118,8 +132,9 @@ Package_Tracking.post('/add', async (req, res, next) => {
 
   // Get all packages
   Package_Tracking.get('/', async (req, res, next) => {
+    console.log("get methed")
     try {
-      const packages = await Package.find();
+      const packages = await Package.find().populate('RecipientId');
       res.status(200).json({
         success: true,
         data: packages,
@@ -158,7 +173,7 @@ Package_Tracking.post('/add', async (req, res, next) => {
     try {
       const package = await Package.findOne({
         TrackingNumber: req.params.trackingNumber,
-      });
+      }).populate('RecipientId');
       if (!package) {
         return res.status(404).json({
           success: false,
@@ -208,7 +223,7 @@ Package_Tracking.post('/add', async (req, res, next) => {
         { TrackingNumber: req.params.trackingNumber },
         req.body, // New data to replace the existing package
         { new: true, runValidators: true, overwrite: true } // Overwrite ensures the entire document is replaced
-      );
+      ).populate('RecipientId');
   
       if (!updatedPackage) {
         return res.status(404).json({
