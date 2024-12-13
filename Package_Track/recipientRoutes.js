@@ -119,57 +119,58 @@ router.get('/', async (req, res, next) => {
 
 /**
  * @swagger
- * /api/recipients/{id}:
+ * /recipients/{RecipientContact}:
  *   get:
- *     summary: Get a recipient by ID
+ *     summary: Get a recipient by contact
  *     tags: [Recipients]
  *     parameters:
  *       - in: path
- *         name: id
- *         required: true
- *         description: The recipient ID
+ *         name: RecipientContact
  *         schema:
- *           type: string
+ *           type: number
+ *         required: true
+ *         description: The recipient's contact number
  *     responses:
  *       200:
- *         description: Recipient retrieved successfully
+ *         description: The recipient information
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Recipient'
  *       404:
  *         description: Recipient not found
- *       500:
- *         description: Server error
  */
-router.get('/:id', async (req, res) => {
+
+router.get('/:RecipientContact', async (req, res) => {
   try {
-    const { id } = req.params;
-    const recipient = await Recipient.findById(id);
+      const { RecipientContact } = req.params;
 
-    if (!recipient) {
-      return res.status(404).json({ error: 'Recipient not found' });
-    }
+      // Find the recipient by contact number
+      const recipient = await Recipient.findOne({ RecipientContact: RecipientContact });
 
-    res.status(200).json(recipient);
+      if (!recipient) {
+          return res.status(404).json({ error: 'Recipient not found with the given contact number' });
+      }
+
+      res.status(200).json(recipient);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+      res.status(500).json({ error: error.message });
   }
 });
 
 /**
  * @swagger
- * /api/recipients/{id}:
+ * /recipients/{RecipientContact}:
  *   put:
- *     summary: Update a recipient by ID
+ *     summary: Fully update a recipient
  *     tags: [Recipients]
  *     parameters:
  *       - in: path
- *         name: id
- *         required: true
- *         description: The recipient ID
+ *         name: RecipientContact
  *         schema:
- *           type: string
+ *           type: number
+ *         required: true
+ *         description: The recipient's contact number
  *     requestBody:
  *       required: true
  *       content:
@@ -179,66 +180,122 @@ router.get('/:id', async (req, res) => {
  *     responses:
  *       200:
  *         description: Recipient updated successfully
- *       400:
- *         description: Invalid input or recipient not found
- *       500:
- *         description: Server error
+ *       404:
+ *         description: Recipient not found
  */
-router.put('/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { RecipientName, RecipientEmail,  RecipientContact, Address } = req.body;
 
-    const updatedRecipient = await Recipient.findByIdAndUpdate(
-      id,
-      { RecipientName, RecipientEmail, RecipientContact, Address },
-      { new: true, runValidators: true }
-    );
+router.put('/:RecipientContact', async (req, res) => {
+    try {
+        const { RecipientContact } = req.params;
+        const { RecipientName, RecipientEmail, Address } = req.body;
 
-    if (!updatedRecipient) {
-      return res.status(400).json({ error: 'Recipient not found' });
+        // Validate required fields
+        if (!RecipientName || !RecipientEmail || !Address) {
+            return res.status(400).json({ error: 'RecipientName, RecipientEmail, and Address are required.' });
+        }
+
+        // Find and update the recipient
+        const updatedRecipient = await Recipient.findOneAndUpdate(
+            { RecipientContact: RecipientContact },
+            { RecipientName, RecipientEmail, Address },
+            { new: true, runValidators: true } // Return the updated document and validate inputs
+        );
+
+        if (!updatedRecipient) {
+            return res.status(404).json({ error: 'Recipient not found with the given contact number' });
+        }
+
+        res.status(200).json(updatedRecipient);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
     }
+});
 
-    res.status(200).json(updatedRecipient);
+
+/**
+ * @swagger
+ * /recipients/{RecipientContact}:
+ *   patch:
+ *     summary: Partially update a recipient
+ *     tags: [Recipients]
+ *     parameters:
+ *       - in: path
+ *         name: RecipientContact
+ *         schema:
+ *           type: number
+ *         required: true
+ *         description: The recipient's contact number
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/Recipient'
+ *     responses:
+ *       200:
+ *         description: Recipient updated successfully
+ *       404:
+ *         description: Recipient not found
+ */
+
+router.patch('/:RecipientContact', async (req, res) => {
+  try {
+      const { RecipientContact } = req.params;
+      const updates = req.body;
+
+      // If RecipientContact is being updated, ensure it's unique
+      if (updates.RecipientContact) {
+          const existingContact = await Recipient.findOne({ RecipientContact: updates.RecipientContact });
+          if (existingContact && updates.RecipientContact != RecipientContact) {
+              return res.status(400).json({ error: 'The new contact number is already in use.' });
+          }
+      }
+
+      // Find and update the recipient
+      const updatedRecipient = await Recipient.findOneAndUpdate(
+          { RecipientContact },
+          updates,
+          { new: true, runValidators: true } // Return the updated document and validate inputs
+      );
+
+      if (!updatedRecipient) {
+          return res.status(404).json({ error: 'Recipient not found with the given contact number' });
+      }
+
+      res.status(200).json(updatedRecipient);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+      res.status(500).json({ error: error.message });
   }
 });
 
 /**
  * @swagger
- * /api/recipients/{id}:
+ * /recipients/{RecipientContact}:
  *   delete:
- *     summary: Delete a recipient by ID
+ *     summary: Delete a recipient
  *     tags: [Recipients]
  *     parameters:
  *       - in: path
- *         name: id
- *         required: true
- *         description: The recipient ID
+ *         name: RecipientContact
  *         schema:
- *           type: string
+ *           type: number
+ *         required: true
+ *         description: The recipient's contact number
  *     responses:
  *       200:
  *         description: Recipient deleted successfully
  *       404:
  *         description: Recipient not found
- *       500:
- *         description: Server error
  */
-router.delete('/:id', async (req, res) => {
+
+router.delete('/:RecipientContact', async (req, res) => {
   try {
-    const { id } = req.params;
-
-    const deletedRecipient = await Recipient.findByIdAndDelete(id);
-
-    if (!deletedRecipient) {
-      return res.status(404).json({ error: 'Recipient not found' });
-    }
-
-    res.status(200).json({ message: 'Recipient deleted successfully' });
+      const { RecipientContact } = req.params;
+      const deletedRecipient = await Recipient.findOneAndDelete({ RecipientContact });
+      if (!deletedRecipient) return res.status(404).json({ error: 'Recipient not found.' });
+      res.status(200).json({ message: 'Recipient deleted successfully.' });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+      res.status(500).json({ error: error.message });
   }
 });
 
