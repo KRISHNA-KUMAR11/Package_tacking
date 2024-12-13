@@ -40,6 +40,12 @@ app.use (cors({
 const swaggerDocs = swaggerJsdoc(swaggerOptions);
 app.use('/api-Packages', swaggerUi.serve, swaggerUi.setup(swaggerDocs));  //http://localhost:5000/api-Packages/ for Swagger
 
+
+// http://62.146.178.245:5000/api-Packages/ for server 
+// ssh revanth@62.146.178.245
+// Passwd: Revanth19
+
+
 // Routes
 app.use('/api/packages', Package_Tracking); // http://localhost:5000/api/packages/
 app.use('/api/recipients', recipientRoutes); //http://localhost:5000//api/recipients/
