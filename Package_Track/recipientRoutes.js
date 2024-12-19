@@ -308,7 +308,7 @@ router.delete('/:RecipientContact', async (req, res) => {
 
 /**
  * @swagger
- * /recipients/bulk-add:
+ * /recipients/add-many:
  *   post:
  *     summary: Bulk adding recipients
  *     tags: [Recipients]
@@ -333,7 +333,7 @@ router.delete('/:RecipientContact', async (req, res) => {
  */
 
 
-router.post('/bulk-add', async (req, res, next) => {
+router.post('/add-many', async (req, res, next) => {
   try {
     const recipients = req.body.recipients; // Array of recipients
     if (!Array.isArray(recipients) || recipients.length === 0) {
@@ -350,7 +350,7 @@ router.post('/bulk-add', async (req, res, next) => {
 
 /**
  * @swagger
- * /recipients/bulk-import:
+ * /recipients/import:
  *   post:
  *     summary: Bulk importing recipients from a JSON file
  *     tags: [Recipients]
@@ -374,7 +374,7 @@ router.post('/bulk-add', async (req, res, next) => {
  *         description: Server error
  */
 
-router.post('/bulk-import', upload.single('file'), async (req, res, next) => {
+router.post('/import', upload.single('file'), async (req, res, next) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'File is required.' });

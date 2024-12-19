@@ -346,7 +346,7 @@ Package_Tracking.post('/', async (req, res, next) => {
 
   /**
  * @swagger
- * /packages/bulk-add:
+ * /packages/add-many:
  *   post:
  *     summary: Bulk adding packages
  *     tags: [Packages]
@@ -367,7 +367,7 @@ Package_Tracking.post('/', async (req, res, next) => {
  *       500:
  *         description: Some server error
  */
-Package_Tracking.post('/bulk-add', async (req, res, next) => {
+Package_Tracking.post('/add-many', async (req, res, next) => {
   try {
       const { packages } = req.body;
 
@@ -394,7 +394,7 @@ Package_Tracking.post('/bulk-add', async (req, res, next) => {
 
 /**
  * @swagger
- * /packages/bulk-import:
+ * /packages/import:
  *   post:
  *     summary: Bulk importing packages from a JSON file
  *     tags: [Packages]
@@ -419,7 +419,7 @@ Package_Tracking.post('/bulk-add', async (req, res, next) => {
  */
 
 // Bulk import packages from a JSON file
-Package_Tracking.post('/bulk-import', upload.single('file'), async (req, res, next) => {
+Package_Tracking.post('/import', upload.single('file'), async (req, res, next) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'File is required.' });
