@@ -47,8 +47,9 @@ app.use('/api-Packages', swaggerUi.serve, swaggerUi.setup(swaggerDocs));  //http
 
 
 // Routes
-app.use('/api/packages', Package_Tracking); // http://localhost:5000/api/packages/
-app.use('/api/recipients', recipientRoutes); //http://localhost:5000//api/recipients/
+app.use('/packages', Package_Tracking); // http://localhost:5000/packages/
+app.use('/recipients', recipientRoutes); //http://localhost:5000/recipients/
+
 
 // Error handling middleware
 app.use(errorHandling);

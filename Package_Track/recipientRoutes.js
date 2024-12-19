@@ -1,6 +1,13 @@
 const express = require('express');
 const Recipient = require('../Package_detatils/Recipient');
 
+const multer = require('multer');
+
+const upload = multer({
+  storage: multer.memoryStorage(), // Store files in memory buffer
+  limits: { fileSize: 10 * 1024 * 1024 }, // Max file size: 10MB
+});
+
 const router = express.Router();
 
 /**
@@ -46,7 +53,7 @@ const router = express.Router();
 
 /**
  * @swagger
- * /api/recipients/add:
+ * /recipients/:
  *   post:
  *     summary: Create a new recipient
  *     tags: [Recipients]
@@ -71,7 +78,7 @@ const router = express.Router();
 
 
 // Create a recipient
-router.post('/add', async (req, res, next) => {
+router.post('/', async (req, res, next) => {
   try {
     const { RecipientName, RecipientEmail, RecipientContact, Address } = req.body;
     const newRecipient = new Recipient(req.body);
@@ -89,7 +96,7 @@ router.post('/add', async (req, res, next) => {
 
 /**
  * @swagger
- * /api/recipients:
+ * /recipients:
  *   get:
  *     summary: Get all recipients
  *     tags: [Recipients]
@@ -296,6 +303,312 @@ router.delete('/:RecipientContact', async (req, res) => {
       res.status(200).json({ message: 'Recipient deleted successfully.' });
   } catch (error) {
       res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * @swagger
+ * /recipients/bulk-add:
+ *   post:
+ *     summary: Bulk adding recipients
+ *     tags: [Recipients]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               recipients:
+ *                 type: array
+ *                 items:
+ *                   $ref: '#/components/schemas/Recipient'
+ *     responses:
+ *       201:
+ *         description: Recipients added successfully
+ *       400:
+ *         description: Invalid input
+ *       500:
+ *         description: Server error
+ */
+
+
+router.post('/bulk-add', async (req, res, next) => {
+  try {
+    const recipients = req.body.recipients; // Array of recipients
+    if (!Array.isArray(recipients) || recipients.length === 0) {
+      return res.status(400).json({ error: 'Invalid input. An array of recipients is required.' });
+    }
+
+    const result = await Recipient.insertMany(recipients, { ordered: true });
+    res.status(201).json({ message: 'Recipients added successfully!', data: result });
+  } catch (error) {
+    next(error); // Pass errors to the error-handling middleware
+  }
+});
+
+
+/**
+ * @swagger
+ * /recipients/bulk-import:
+ *   post:
+ *     summary: Bulk importing recipients from a JSON file
+ *     tags: [Recipients]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: JSON file containing an array of recipients
+ *     responses:
+ *       201:
+ *         description: Recipients imported successfully
+ *       400:
+ *         description: Invalid file content
+ *       500:
+ *         description: Server error
+ */
+
+router.post('/bulk-import', upload.single('file'), async (req, res, next) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'File is required.' });
+    }
+
+    const recipientsData = JSON.parse(req.file.buffer.toString()); // Parse file content
+    if (!Array.isArray(recipientsData) || recipientsData.length === 0) {
+      return res.status(400).json({ error: 'Invalid file content. An array of recipients is required.' });
+    }
+
+    const result = await Recipient.insertMany(recipientsData, { ordered: true });
+    res.status(201).json({ message: 'Recipients imported successfully!', data: result });
+  } catch (error) {
+    next(error); // Pass errors to the error-handling middleware
+  }
+});
+
+/**
+ * @swagger
+ * /recipients/delete-many:
+ *   post:
+ *     summary: Delete multiple recipients by their contact numbers
+ *     tags: [Recipients]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - contactNumbers
+ *             properties:
+ *               contactNumbers:
+ *                 type: array
+ *                 items:
+ *                   type: number
+ *                 description: Array of recipient contact numbers to delete
+ *             example:
+ *               contactNumbers: [1234567890, 9876543210]
+ *     responses:
+ *       200:
+ *         description: Recipients deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 deletedCount:
+ *                   type: number
+ *                 notFoundNumbers:
+ *                   type: array
+ *                   items:
+ *                     type: number
+ *       400:
+ *         description: Invalid input
+ *       500:
+ *         description: Server error
+ */
+
+router.post('/delete-many', async (req, res, next) => {
+  try {
+    const { contactNumbers } = req.body;
+
+    // Validate input
+    if (!Array.isArray(contactNumbers) || contactNumbers.length === 0) {
+      return res.status(400).json({ 
+        error: 'Invalid input. An array of contact numbers is required.' 
+      });
+    }
+
+    // Verify all items are numbers
+    if (!contactNumbers.every(num => typeof num === 'number')) {
+      return res.status(400).json({ 
+        error: 'All contact numbers must be numeric values.' 
+      });
+    }
+
+    // Find existing recipients before deletion
+    const existingRecipients = await Recipient.find({
+      RecipientContact: { $in: contactNumbers }
+    });
+
+    const existingNumbers = existingRecipients.map(r => r.RecipientContact);
+    const notFoundNumbers = contactNumbers.filter(num => !existingNumbers.includes(num));
+
+    // Delete the recipients
+    const deleteResult = await Recipient.deleteMany({
+      RecipientContact: { $in: contactNumbers }
+    });
+
+    res.status(200).json({
+      message: 'Recipients deleted successfully',
+      deletedCount: deleteResult.deletedCount,
+      notFoundNumbers: notFoundNumbers
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /recipients/update-many:
+ *   post:
+ *     summary: Update multiple recipients by their contact numbers
+ *     tags: [Recipients]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - updates
+ *             properties:
+ *               updates:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   required:
+ *                     - RecipientContact
+ *                   properties:
+ *                     RecipientContact:
+ *                       type: number
+ *                       description: Contact number to identify the recipient
+ *                     RecipientName:
+ *                       type: string
+ *                       description: New name for the recipient
+ *                     RecipientEmail:
+ *                       type: string
+ *                       description: New email for the recipient
+ *                     Address:
+ *                       type: string
+ *                       description: New address for the recipient
+ *             example:
+ *               updates: [
+ *                 {
+ *                   RecipientContact: 1234567890,
+ *                   RecipientName: "Updated Name",
+ *                   Address: "New Address"
+ *                 },
+ *                 {
+ *                   RecipientContact: 9876543210,
+ *                   RecipientEmail: "new.email@example.com"
+ *                 }
+ *               ]
+ *     responses:
+ *       200:
+ *         description: Recipients updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 updatedCount:
+ *                   type: number
+ *                 notFoundNumbers:
+ *                   type: array
+ *                   items:
+ *                     type: number
+ *                 updatedRecipients:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Recipient'
+ *       400:
+ *         description: Invalid input
+ *       500:
+ *         description: Server error
+ */
+
+router.post('/update-many', async (req, res, next) => {
+  try {
+    const { updates } = req.body;
+
+    // Validate input
+    if (!Array.isArray(updates) || updates.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid input. An array of updates is required.'
+      });
+    }
+
+    // Verify all items have RecipientContact
+    if (!updates.every(update => typeof update.RecipientContact === 'number')) {
+      return res.status(400).json({
+        success: false,
+        message: 'Each update must include a numeric RecipientContact.'
+      });
+    }
+
+    const contactNumbers = updates.map(update => update.RecipientContact);
+    const updatedRecipients = [];
+    const notFoundNumbers = [];
+
+    // Process updates one by one to handle validation properly
+    for (const update of updates) {
+      const { RecipientContact, ...updateData } = update;
+
+      // Find and update the recipient
+      const updatedRecipient = await Recipient.findOneAndUpdate(
+        { RecipientContact },
+        updateData,
+        { new: true, runValidators: true }
+      );
+
+      if (updatedRecipient) {
+        updatedRecipients.push(updatedRecipient);
+      } else {
+        notFoundNumbers.push(RecipientContact);
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Recipients update operation completed',
+      updatedCount: updatedRecipients.length,
+      notFoundNumbers,
+      updatedRecipients
+    });
+  } catch (error) {
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation error',
+        error: error.message
+      });
+    }
+    next(error);
   }
 });
 

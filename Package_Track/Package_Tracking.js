@@ -2,6 +2,13 @@ const express = require('express');
 const Package = require('../Package_detatils/Package_details');
 const Recipient = require('../Package_detatils/Recipient');
 const Package_Tracking = express.Router();
+const multer = require('multer'); // File upload middleware
+
+// Set up multer storage to handle file uploads
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB limit
+});
 
 
 /**
@@ -66,7 +73,7 @@ const Package_Tracking = express.Router();
 
 /**
  * @swagger
- * /api/packages/add:
+ * /packages/:
  *   post:
  *     summary: Create a new package
  *     tags: [Packages]
@@ -91,7 +98,7 @@ const Package_Tracking = express.Router();
 
 
 // Create a new package
-Package_Tracking.post('/add', async (req, res, next) => {
+Package_Tracking.post('/', async (req, res, next) => {
     try {
       const { TrackingNumber, Status, SenderName, RecipientId, Origin, Destination, Description, Package_weight, Price } = req.body;
       const recipient = await Recipient.findById(RecipientId);
@@ -114,7 +121,7 @@ Package_Tracking.post('/add', async (req, res, next) => {
 
 /**
  * @swagger
- * /api/packages:
+ * /packages:
  *   get:
  *     summary: Retrieve all packages
  *     tags: [Packages]
@@ -146,7 +153,7 @@ Package_Tracking.post('/add', async (req, res, next) => {
   
   /**
  * @swagger
- * /api/packages/{trackingNumber}:
+ * /packages/{trackingNumber}:
  *   get:
  *     summary: Get a package by tracking number
  *     tags: [Packages]
@@ -192,7 +199,7 @@ Package_Tracking.post('/add', async (req, res, next) => {
 
 /**
  * @swagger
- * /api/packages/{trackingNumber}:
+ * /packages/{trackingNumber}:
  *   put:
  *     summary: Update a package by tracking number
  *     tags: [Packages]
@@ -244,7 +251,7 @@ Package_Tracking.post('/add', async (req, res, next) => {
   
   /**
  * @swagger
- * /api/packages/{trackingNumber}:
+ * /packages/{trackingNumber}:
  *   patch:
  *     summary: Partially update a package by tracking number
  *     tags: [Packages]
@@ -298,7 +305,7 @@ Package_Tracking.post('/add', async (req, res, next) => {
   
 /**
  * @swagger
- * /api/packages/{trackingNumber}:
+ * /packages/{trackingNumber}:
  *   delete:
  *     summary: Delete a package by tracking number
  *     tags: [Packages]
@@ -336,5 +343,318 @@ Package_Tracking.post('/add', async (req, res, next) => {
       return next(error);
     }
   });
+
+  /**
+ * @swagger
+ * /packages/bulk-add:
+ *   post:
+ *     summary: Bulk adding packages
+ *     tags: [Packages]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               packages:
+ *                 type: array
+ *                 items:
+ *                   $ref: '#/components/schemas/Package'
+ *     responses:
+ *       201:
+ *         description: Packages were successfully created
+ *       500:
+ *         description: Some server error
+ */
+Package_Tracking.post('/bulk-add', async (req, res, next) => {
+  try {
+      const { packages } = req.body;
+
+      // Validate if each package has valid recipient ID
+      for (let i = 0; i < packages.length; i++) {
+          const recipient = await Recipient.findById(packages[i].RecipientId);
+          if (!recipient) {
+              return res.status(404).json({ message: `Recipient not found for Package ${i + 1}` });
+          }
+      }
+
+      // Bulk insert packages
+      const result = await Package.insertMany(packages);
+      res.status(201).json({
+          success: true,
+          message: 'Packages created successfully!',
+          data: result,
+      });
+
+  } catch (error) {
+      return next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /packages/bulk-import:
+ *   post:
+ *     summary: Bulk importing packages from a JSON file
+ *     tags: [Packages]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: JSON file containing an array of packages
+ *     responses:
+ *       201:
+ *         description: Packages imported successfully
+ *       400:
+ *         description: Invalid file content
+ *       500:
+ *         description: Server error
+ */
+
+// Bulk import packages from a JSON file
+Package_Tracking.post('/bulk-import', upload.single('file'), async (req, res, next) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'File is required.' });
+    }
+
+    let packagesData;
+try {
+  packagesData = JSON.parse(req.file.buffer.toString('utf-8')); // Ensure UTF-8 encoding
+} catch (error) {
+  console.error('JSON Parsing Error:', error.message);
+  return res.status(400).json({ error: 'Invalid JSON file content.' });
+}
+
+
+    if (!Array.isArray(packagesData) || packagesData.length === 0) {
+      return res.status(400).json({ error: 'Invalid file content. An array of packages is required.' });
+    }
+
+    for (let i = 0; i < packagesData.length; i++) {
+      const recipient = await Recipient.findById(packagesData[i].RecipientId);
+      if (!recipient) {
+        return res.status(404).json({ message: `Recipient not found for Package ${i + 1}` });
+      }
+    }
+
+    const result = await Package.insertMany(packagesData, { ordered: true });
+    res.status(201).json({
+      message: 'Packages imported successfully!',
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /packages/delete-many:
+ *   post:
+ *     summary: Delete multiple packages by their tracking numbers
+ *     tags: [Packages]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - trackingNumbers
+ *             properties:
+ *               trackingNumbers:
+ *                 type: array
+ *                 items:
+ *                   type: number
+ *                 description: Array of package tracking numbers to delete
+ *             example:
+ *               trackingNumbers: [123456, 789012]
+ *     responses:
+ *       200:
+ *         description: Packages deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 deletedCount:
+ *                   type: number
+ *                 notFoundNumbers:
+ *                   type: array
+ *                   items:
+ *                     type: number
+ *       400:
+ *         description: Invalid input
+ *       500:
+ *         description: Server error
+ */
+
+Package_Tracking.post('/delete-many', async (req, res, next) => {
+  try {
+    const { trackingNumbers } = req.body;
+
+    // Validate input
+    if (!Array.isArray(trackingNumbers) || trackingNumbers.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid input. An array of tracking numbers is required.'
+      });
+    }
+
+    // Verify all items are numbers
+    if (!trackingNumbers.every(num => typeof num === 'number')) {
+      return res.status(400).json({
+        success: false,
+        message: 'All tracking numbers must be numeric values.'
+      });
+    }
+
+    // Find existing packages before deletion
+    const existingPackages = await Package.find({
+      TrackingNumber: { $in: trackingNumbers }
+    });
+
+    const existingNumbers = existingPackages.map(p => p.TrackingNumber);
+    const notFoundNumbers = trackingNumbers.filter(num => !existingNumbers.includes(num));
+
+    // Delete the packages
+    const deleteResult = await Package.deleteMany({
+      TrackingNumber: { $in: trackingNumbers }
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Packages deleted successfully',
+      deletedCount: deleteResult.deletedCount,
+      notFoundNumbers: notFoundNumbers
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /packages/update-many:
+ *   post:
+ *     summary: Update multiple packages by their tracking numbers
+ *     tags: [Packages]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - updates
+ *             properties:
+ *               updates:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   required:
+ *                     - TrackingNumber
+ *                   properties:
+ *                     TrackingNumber:
+ *                       type: number
+ *                       description: The tracking number of the package to update
+ *                     fieldsToUpdate:
+ *                       type: object
+ *                       description: Key-value pairs of fields to update
+ *             example:
+ *               updates:
+ *                 - TrackingNumber: 123456
+ *                   fieldsToUpdate: { Status: "delivered", Price: 600 }
+ *                 - TrackingNumber: 789012
+ *                   fieldsToUpdate: { Status: "in-transit" }
+ *     responses:
+ *       200:
+ *         description: Packages updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 updatedPackages:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Package'
+ *                 notFoundNumbers:
+ *                   type: array
+ *                   items:
+ *                     type: number
+ *       400:
+ *         description: Invalid input
+ *       500:
+ *         description: Server error
+ */
+
+// Update many packages
+Package_Tracking.post('/update-many', async (req, res, next) => {
+  try {
+    const { updates } = req.body;
+
+    // Validate input
+    if (!Array.isArray(updates) || updates.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid input. An array of updates is required.',
+      });
+    }
+
+    const notFoundNumbers = [];
+    const updatedPackages = [];
+
+    // Process each update
+    for (const update of updates) {
+      const { TrackingNumber, fieldsToUpdate } = update;
+
+      if (!TrackingNumber || typeof fieldsToUpdate !== 'object') {
+        return res.status(400).json({
+          success: false,
+          message: 'Each update must contain a valid TrackingNumber and fieldsToUpdate object.',
+        });
+      }
+
+      // Attempt to find and update the package
+      const updatedPackage = await Package.findOneAndUpdate(
+        { TrackingNumber },
+        fieldsToUpdate,
+        { new: true, runValidators: true }
+      );
+
+      if (updatedPackage) {
+        updatedPackages.push(updatedPackage);
+      } else {
+        notFoundNumbers.push(TrackingNumber);
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Packages updated successfully',
+      updatedPackages,
+      notFoundNumbers,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 module.exports = Package_Tracking;
