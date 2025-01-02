@@ -49,6 +49,11 @@ const RecipientSchema = new mongoose.Schema({
         message: (props) => `${props.value} is not a valid address format`,
         },
     },
-});
+    Image: { 
+      data: Buffer, 
+      contentType: String 
+    } // Field to store the image
+  });
+
 
 module.exports = mongoose.model('Recipient', RecipientSchema);

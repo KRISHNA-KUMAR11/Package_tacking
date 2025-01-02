@@ -9,6 +9,7 @@ const swaggerJsdoc = require('swagger-jsdoc');
 const swaggerUi = require('swagger-ui-express');
 const swaggerOptions = require('./swaggerDef');
 const cors = require('cors');
+const path = require('path');
 
 
 
@@ -34,6 +35,9 @@ mongoose
 app.use (cors({
   origin: "*",
 }));
+
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
 
 
 // Swagger setup

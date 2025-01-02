@@ -3,6 +3,8 @@ const Package = require('../Package_detatils/Package_details');
 const Recipient = require('../Package_detatils/Recipient');
 const Package_Tracking = express.Router();
 const multer = require('multer'); // File upload middleware
+const path = require('path');
+
 
 // Set up multer storage to handle file uploads
 const upload = multer({
@@ -10,6 +12,17 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB limit
 });
 
+const imageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // Limit file size to 5MB
+  fileFilter: (req, file, cb) => {
+    if (!file.mimetype.startsWith('image/')) {
+      cb(new Error('Only image files are allowed!'));
+    } else {
+      cb(null, true);
+    }
+  },
+});
 
 /**
  * @swagger
@@ -249,7 +262,7 @@ Package_Tracking.post('/', async (req, res, next) => {
     }
   });
   
-  /**
+/**
  * @swagger
  * /packages/{trackingNumber}:
  *   patch:
@@ -656,5 +669,182 @@ Package_Tracking.post('/update-many', async (req, res, next) => {
     next(error);
   }
 });
+
+/**
+ * @swagger
+ * /packages/{trackingNumber}/add_image:
+ *   post:
+ *     summary: Upload an image for a package
+ *     tags:
+ *       - Packages
+ *     parameters:
+ *       - in: path
+ *         name: trackingNumber
+ *         required: true
+ *         schema:
+ *           type: number
+ *         description: The tracking number of the package
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: Image file to upload
+ *     responses:
+ *       200:
+ *         description: Image uploaded successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 package:
+ *                   type: object
+ *                   $ref: '#/components/schemas/Package'
+ *       400:
+ *         description: Image file is required or invalid input
+ *       404:
+ *         description: Package not found
+ *       500:
+ *         description: Server error
+ */
+
+// Add image
+Package_Tracking.post('/:trackingNumber/add_image', imageUpload.single('file'), async (req, res) => {
+  try {
+    const { trackingNumber } = req.params;
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'Image file is required.' });
+    }
+
+    const package = await Package.findOneAndUpdate(
+      { TrackingNumber: trackingNumber },
+      {
+        Image: {
+          data: req.file.buffer,
+          contentType: req.file.mimetype,
+        },
+      },
+      { new: true }
+    );
+
+    if (!package) {
+      return res.status(404).json({ error: 'Package not found.' });
+    }
+
+    res.status(200).json({ message: 'Image uploaded successfully', package });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * @swagger
+ * /packages/{trackingNumber}/get_image:
+ *   get:
+ *     summary: Retrieve the image for a package
+ *     tags:
+ *       - Packages
+ *     parameters:
+ *       - in: path
+ *         name: trackingNumber
+ *         required: true
+ *         schema:
+ *           type: number
+ *         description: The tracking number of the package
+ *     responses:
+ *       200:
+ *         description: Image retrieved successfully
+ *         content:
+ *           image/*:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       404:
+ *         description: Image not found for the given package
+ *       500:
+ *         description: Server error
+ */
+
+// Get image
+Package_Tracking.get('/:trackingNumber/get_image', async (req, res) => {
+  try {
+    const { trackingNumber } = req.params;
+
+    const package = await Package.findOne({ TrackingNumber: trackingNumber });
+
+    if (!package || !package.Image) {
+      return res.status(404).json({ error: 'Image not found for this package.' });
+    }
+
+    res.set('Content-Type', package.Image.contentType);
+    res.send(package.Image.data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * @swagger
+ * /packages/{trackingNumber}/delete_image:
+ *   delete:
+ *     summary: Delete the image for a package
+ *     tags:
+ *       - Packages
+ *     parameters:
+ *       - in: path
+ *         name: trackingNumber
+ *         required: true
+ *         schema:
+ *           type: number
+ *         description: The tracking number of the package
+ *     responses:
+ *       200:
+ *         description: Image deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 package:
+ *                   type: object
+ *                   $ref: '#/components/schemas/Package'
+ *       404:
+ *         description: Package not found
+ *       500:
+ *         description: Server error
+ */
+
+// Delete image
+Package_Tracking.delete('/:trackingNumber/delete_image', async (req, res) => {
+  try {
+    const { trackingNumber } = req.params;
+
+    const package = await Package.findOneAndUpdate(
+      { TrackingNumber: trackingNumber },
+      { $unset: { Image: "" } },
+      { new: true }
+    );
+
+    if (!package) {
+      return res.status(404).json({ error: 'Package not found.' });
+    }
+
+    res.status(200).json({ message: 'Image deleted successfully', package });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 
 module.exports = Package_Tracking;

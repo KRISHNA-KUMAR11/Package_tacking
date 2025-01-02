@@ -58,7 +58,11 @@ const PackageSchema = new mongoose.Schema({
         },
     get: v => `$${v.toFixed(2)}`,
     set: v => parseFloat(v),
-    }
+    },
+    Image: {
+        data: Buffer, // Binary data of the image
+        contentType: String, // MIME type of the image
+      }
 });
 
 module.exports = mongoose.model('Package_details', PackageSchema);

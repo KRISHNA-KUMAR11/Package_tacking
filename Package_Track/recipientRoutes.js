@@ -1,11 +1,24 @@
-const express = require('express');
+const express = require ('express');
 const Recipient = require('../Package_detatils/Recipient');
 
 const multer = require('multer');
+const path = require('path');
 
 const upload = multer({
   storage: multer.memoryStorage(), // Store files in memory buffer
   limits: { fileSize: 10 * 1024 * 1024 }, // Max file size: 10MB
+});
+ 
+const imageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // Limit file size to 5MB
+  fileFilter: (req, file, cb) => {
+    if (!file.mimetype.startsWith('image/')) {
+      cb(new Error('Only image files are allowed!'));
+    } else {
+      cb(null, true);
+    }
+  },
 });
 
 const router = express.Router();
@@ -611,6 +624,209 @@ router.post('/update-many', async (req, res, next) => {
     next(error);
   }
 });
+
+/**
+ * @swagger
+ * /recipients/{RecipientContact}/add_image:
+ *   post:
+ *     summary: Upload or update an ID proof image for a recipient
+ *     tags:
+ *       - Recipients
+ *     parameters:
+ *       - in: path
+ *         name: RecipientContact
+ *         required: true
+ *         schema:
+ *           type: number
+ *         description: Contact number of the recipient
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *                 description: ID proof image file
+ *     responses:
+ *       200:
+ *         description: Image uploaded successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 recipient:
+ *                   type: object
+ *                   $ref: '#/components/schemas/Recipient'
+ *       400:
+ *         description: Image file is required or invalid input
+ *       404:
+ *         description: Recipient not found
+ *       500:
+ *         description: Server error
+ * 
+ * /recipients/{RecipientContact}/get_image:
+ *   get:
+ *     summary: Retrieve the ID proof image of a recipient
+ *     tags:
+ *       - Recipients
+ *     parameters:
+ *       - in: path
+ *         name: RecipientContact
+ *         required: true
+ *         schema:
+ *           type: number
+ *         description: Contact number of the recipient
+ *     responses:
+ *       200:
+ *         description: Image retrieved successfully
+ *         content:
+ *           image/*:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       404:
+ *         description: Image not found for the given recipient
+ *       500:
+ *         description: Server error
+ */
+
+
+
+router.post('/:RecipientContact/add_image', imageUpload.single('image'), async (req, res) => {
+  try {
+    const { RecipientContact } = req.params;
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'Image file is required.' });
+    }
+
+    const recipient = await Recipient.findOneAndUpdate(
+      { RecipientContact },
+      {
+        Image: {
+          data: req.file.buffer,
+          contentType: req.file.mimetype,
+        },
+      },
+      { new: true }
+    );
+
+    if (!recipient) {
+      return res.status(404).json({ error: 'Recipient not found.' });
+    }
+
+    res.status(200).json({ message: 'Image uploaded successfully', recipient });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * @swagger
+ * /recipients/{RecipientContact}/get_image:
+ *   get:
+ *     summary: Retrieve the ID proof image of a recipient
+ *     tags:
+ *       - Recipients
+ *     parameters:
+ *       - in: path
+ *         name: RecipientContact
+ *         required: true
+ *         schema:
+ *           type: number
+ *         description: Contact number of the recipient
+ *     responses:
+ *       200:
+ *         description: Image retrieved successfully
+ *         content:
+ *           image/*:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       404:
+ *         description: Image not found for the given recipient
+ *       500:
+ *         description: Server error
+ */
+
+// Get image
+router.get('/:RecipientContact/get_image', async (req, res) => {
+  try {
+    const { RecipientContact } = req.params;
+
+    const recipient = await Recipient.findOne({ RecipientContact });
+
+    if (!recipient || !recipient.Image) {
+      return res.status(404).json({ error: 'Image not found for the given recipient.' });
+    }
+
+    res.set('Content-Type', recipient.Image.contentType);
+    res.send(recipient.Image.data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * @swagger
+ * /recipients/{RecipientContact}/delete_image:
+ *   delete:
+ *     summary: Delete the ID proof image of a recipient
+ *     tags:
+ *       - Recipients
+ *     parameters:
+ *       - in: path
+ *         name: RecipientContact
+ *         required: true
+ *         schema:
+ *           type: number
+ *         description: Contact number of the recipient
+ *     responses:
+ *       200:
+ *         description: Image deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 recipient:
+ *                   type: object
+ *                   $ref: '#/components/schemas/Recipient'
+ *       404:
+ *         description: Recipient not found
+ *       500:
+ *         description: Server error
+ */
+
+// Delete image
+router.delete('/:RecipientContact/delete_image', async (req, res) => {
+  try {
+    const { RecipientContact } = req.params;
+
+    const recipient = await Recipient.findOneAndUpdate(
+      { RecipientContact },
+      { $unset: { Image: "" } },
+      { new: true }
+    );
+
+    if (!recipient) {
+      return res.status(404).json({ error: 'Recipient not found.' });
+    }
+
+    res.status(200).json({ message: 'Image deleted successfully', recipient });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 
 
 module.exports = router;
