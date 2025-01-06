@@ -1,7 +1,7 @@
 {
   "name": "package_tacking",
   "version": "1.0.0",
-  "main": "Server.js",
+  "main": "server.js",
   "scripts": {
     "format": "prettier --write .",
     "test": "jest",
