@@ -7,7 +7,7 @@ const swaggerDefinition = {
   },
   servers: [
     {
-      url: 'http://62.146.178.245:5000',
+      url: 'http://localhost:5000',
       description: 'Packages Server',
     },
   ],

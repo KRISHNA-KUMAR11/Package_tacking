@@ -46,8 +46,8 @@ app.use('/api-Packages', swaggerUi.serve, swaggerUi.setup(swaggerDocs));  //http
 
 
 // http://62.146.178.245:5000/api-Packages/ for server 
-// ssh revanth@62.146.178.245
-// Passwd: Revanth19
+// ssh krishna@62.146.178.245
+// Passwd: Krishna11
 
 
 // Routes

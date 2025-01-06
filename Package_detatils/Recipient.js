@@ -49,10 +49,32 @@ const RecipientSchema = new mongoose.Schema({
         message: (props) => `${props.value} is not a valid address format`,
         },
     },
-    Image: { 
-      data: Buffer, 
-      contentType: String 
-    } // Field to store the image
+    Image: {
+      data: {
+        type: Buffer,
+        validate: {
+          validator: function (v) {
+            return v && v.length > 0;
+          },
+        },
+      },
+      contentType: {
+        type: String,
+        enum: {
+          values: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
+          message: 'Only JPEG, PNG, GIF, and WebP image formats are allowed.',
+        },
+      },
+      size: {
+        type: Number,
+        validate: {
+          validator: function (v) {
+            return v <= 5 * 1024 * 1024; // 5 MB limit
+          },
+          message: 'Image size must be less than 5 MB.',
+        },
+      },
+    },
   });
 
 

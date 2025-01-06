@@ -103,33 +103,73 @@ const imageUpload = multer({
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Package'
+ *       400:
+ *         description: Validation error
+ *       404:
+ *         description: Recipient not found
  *       500:
  *         description: Some server error
  */
 
+// Middleware to validate package data
+const validatePackage = (req, res, next) => {
+  const { TrackingNumber, Status, SenderName, RecipientId, Origin, Destination, Package_weight, Price } = req.body;
 
+  const requiredFields = ['TrackingNumber', 'Status', 'SenderName', 'RecipientId', 'Origin', 'Destination', 'Package_weight', 'Price'];
 
-
-// Create a new package
-Package_Tracking.post('/', async (req, res, next) => {
-    try {
-      const { TrackingNumber, Status, SenderName, RecipientId, Origin, Destination, Description, Package_weight, Price } = req.body;
-      const recipient = await Recipient.findById(RecipientId);
-      if (recipient===null) {
-        return res.status(404).json({ message: 'Recipient not found' });
-      }
-      const newPackage = new Package(req.body);
-      await newPackage.save();
-      res.status(201).json({
-        success: true,
-        message: 'Package created successfully!',
-        data: newPackage,
+  // Check for missing fields
+  for (const field of requiredFields) {
+    if (!req.body[field]) {
+      return res.status(400).json({
+        success: false,
+        message: `Missing required field: ${field}`,
+        requiredFields,
       });
-      
-    } catch (error) {
-      return next(error);
     }
-  });
+  }
+
+  // Validate Status field
+  const validStatuses = ['pending', 'in-transit', 'delivered', 'not delivered'];
+  if (!validStatuses.includes(Status)) {
+    return res.status(400).json({
+      success: false,
+      message: `Invalid Status value. Allowed values are: ${validStatuses.join(', ')}`,
+    });
+  }
+
+  // Validate numeric fields
+  if (typeof TrackingNumber !== 'number' || typeof Package_weight !== 'number' || typeof Price !== 'number') {
+    return res.status(400).json({
+      success: false,
+      message: 'TrackingNumber, Package_weight, and Price must be numbers',
+    });
+  }
+
+  next();
+};
+
+// POST route to create a new package
+Package_Tracking.post('/', validatePackage, async (req, res, next) => {
+  try {
+    const recipient = await Recipient.findById(req.body.RecipientId);
+    if (!recipient) {
+      return res.status(404).json({ message: 'Recipient not found' });
+    }
+
+    // Save the new package
+    const newPackage = new Package(req.body);
+    const savedPackage = await newPackage.save();
+
+    res.status(201).json({
+      success: true,
+      message: 'Package created successfully!',
+      data: savedPackage,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
   
 
 /**
@@ -152,7 +192,7 @@ Package_Tracking.post('/', async (req, res, next) => {
 
   // Get all packages
   Package_Tracking.get('/', async (req, res, next) => {
-    console.log("get methed")
+
     try {
       const packages = await Package.find().populate('RecipientId');
       res.status(200).json({
@@ -191,10 +231,10 @@ Package_Tracking.post('/', async (req, res, next) => {
   // Get a package by TrackingNumber
   Package_Tracking.get('/:trackingNumber', async (req, res, next) => {
     try {
-      const package = await Package.findOne({
+      const pkg = await Package.findOne({
         TrackingNumber: req.params.trackingNumber,
       }).populate('RecipientId');
-      if (!package) {
+      if (!pkg) {
         return res.status(404).json({
           success: false,
           message: 'Package not found!',
@@ -202,7 +242,7 @@ Package_Tracking.post('/', async (req, res, next) => {
       }
       res.status(200).json({
         success: true,
-        data: package,
+        data: pkg,
       });
     } catch (error) {
       return next(error);
@@ -295,12 +335,12 @@ Package_Tracking.post('/', async (req, res, next) => {
   // Update a package's status
   Package_Tracking.patch('/:trackingNumber', async (req, res, next) => {
     try {
-      const package = await Package.findOneAndUpdate(
+      const pkg = await Package.findOneAndUpdate(
         { TrackingNumber: req.params.trackingNumber },
         { Status: req.body.Status },
         { new: true, runValidators: true }
       );
-      if (!package) {
+      if (!pkg) {
         return res.status(404).json({
           success: false,
           message: 'Package not found!',
@@ -309,7 +349,7 @@ Package_Tracking.post('/', async (req, res, next) => {
       res.status(200).json({
         success: true,
         message: 'Package status updated successfully!',
-        data: package,
+        data: pkg,
       });
     } catch (error) {
       return next(error);
@@ -339,10 +379,10 @@ Package_Tracking.post('/', async (req, res, next) => {
   // Delete a package
   Package_Tracking.delete('/:trackingNumber', async (req, res, next) => {
     try {
-      const package = await Package.findOneAndDelete({
+      const pkg = await Package.findOneAndDelete({
         TrackingNumber: req.params.trackingNumber,
       });
-      if (!package) {
+      if (!pkg) {
         return res.status(404).json({
           success: false,
           message: 'Package not found!',
@@ -725,7 +765,7 @@ Package_Tracking.post('/:trackingNumber/add_image', imageUpload.single('file'), 
       return res.status(400).json({ error: 'Image file is required.' });
     }
 
-    const package = await Package.findOneAndUpdate(
+    const pkg = await Package.findOneAndUpdate(
       { TrackingNumber: trackingNumber },
       {
         Image: {
@@ -736,11 +776,11 @@ Package_Tracking.post('/:trackingNumber/add_image', imageUpload.single('file'), 
       { new: true }
     );
 
-    if (!package) {
+    if (!pkg) {
       return res.status(404).json({ error: 'Package not found.' });
     }
 
-    res.status(200).json({ message: 'Image uploaded successfully', package });
+    res.status(200).json({ message: 'Image uploaded successfully', pkg });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -779,14 +819,14 @@ Package_Tracking.get('/:trackingNumber/get_image', async (req, res) => {
   try {
     const { trackingNumber } = req.params;
 
-    const package = await Package.findOne({ TrackingNumber: trackingNumber });
+    const pkg = await Package.findOne({ TrackingNumber: trackingNumber });
 
-    if (!package || !package.Image) {
+    if (!pkg || !pkg.Image) {
       return res.status(404).json({ error: 'Image not found for this package.' });
     }
 
-    res.set('Content-Type', package.Image.contentType);
-    res.send(package.Image.data);
+    res.set('Content-Type', pkg.Image.contentType);
+    res.send(pkg.Image.data);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -830,17 +870,17 @@ Package_Tracking.delete('/:trackingNumber/delete_image', async (req, res) => {
   try {
     const { trackingNumber } = req.params;
 
-    const package = await Package.findOneAndUpdate(
+    const pkg = await Package.findOneAndUpdate(
       { TrackingNumber: trackingNumber },
       { $unset: { Image: "" } },
       { new: true }
     );
 
-    if (!package) {
+    if (!pkg) {
       return res.status(404).json({ error: 'Package not found.' });
     }
 
-    res.status(200).json({ message: 'Image deleted successfully', package });
+    res.status(200).json({ message: 'Image deleted successfully', pkg });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

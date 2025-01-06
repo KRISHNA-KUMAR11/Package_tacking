@@ -60,9 +60,31 @@ const PackageSchema = new mongoose.Schema({
     set: v => parseFloat(v),
     },
     Image: {
-        data: Buffer, // Binary data of the image
-        contentType: String, // MIME type of the image
-      }
+        data: {
+          type: Buffer,
+          validate: {
+            validator: function (v) {
+              return v && v.length > 0;
+            },
+          },
+        },
+        contentType: {
+          type: String,
+          enum: {
+            values: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
+            message: 'Only JPEG, PNG, GIF, and WebP image formats are allowed.',
+          },
+        },
+        size: {
+          type: Number,
+          validate: {
+            validator: function (v) {
+              return v <= 5 * 1024 * 1024; // 5 MB limit
+            },
+            message: 'Image size must be less than 5 MB.',
+          },
+        },
+    },
 });
 
 module.exports = mongoose.model('Package_details', PackageSchema);

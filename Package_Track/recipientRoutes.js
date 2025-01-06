@@ -84,24 +84,38 @@ const router = express.Router();
  *             schema:
  *               $ref: '#/components/schemas/Recipient'
  *       400:
- *         description: Invalid input or duplicate email
+ *         description: Missing required fields
  *       500:
  *         description: Server error
  */
 
+const validateRecipient = (req, res, next) => {
+  const { RecipientName, RecipientEmail, RecipientContact, Address } = req.body;
+
+  if (!RecipientName || !RecipientEmail || !RecipientContact || !Address) {
+    return res.status(400).json({
+      success: false,
+      message: 'Missing required fields',
+      requiredFields: ['RecipientName', 'RecipientEmail', 'RecipientContact', 'Address'],
+    });
+  }
+
+  next();
+};
 
 // Create a recipient
-router.post('/', async (req, res, next) => {
+router.post('/', validateRecipient, async (req, res, next) => {
   try {
-    const { RecipientName, RecipientEmail, RecipientContact, Address } = req.body;
+
     const newRecipient = new Recipient(req.body);
     const savedRecipient = await newRecipient.save();
-      res.status(201).json({
-        success: true,
-        message: 'Recipient created successfully!',
-        data: savedRecipient,
-      });
-    res.status(201).json(newRecipient);
+
+    res.status(201).json({
+      success: true,
+      message: 'Recipient created successfully!',
+      data: savedRecipient,
+    });
+
   } catch (error) {
     next(error);
   }
