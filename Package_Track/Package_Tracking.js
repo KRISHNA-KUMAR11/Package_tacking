@@ -12,12 +12,14 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB limit
 });
 
-const imageUpload = multer({
+const fileUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 }, // Limit file size to 5MB
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB limit
   fileFilter: (req, file, cb) => {
-    if (!file.mimetype.startsWith('image/')) {
-      cb(new Error('Only image files are allowed!'));
+    // Accept images and PDF files
+    const allowedMimes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
+    if (!allowedMimes.includes(file.mimetype)) {
+      cb(new Error('Only image files (JPEG, PNG, GIF, WebP) and PDF files are allowed!'));
     } else {
       cb(null, true);
     }
@@ -712,9 +714,9 @@ Package_Tracking.post('/update-many', async (req, res, next) => {
 
 /**
  * @swagger
- * /packages/{trackingNumber}/add_image:
+ * /packages/{trackingNumber}/ID_Proof:
  *   post:
- *     summary: Upload an image for a package
+ *     summary: Upload an ID_Proof for a package
  *     tags:
  *       - Packages
  *     parameters:
@@ -722,7 +724,7 @@ Package_Tracking.post('/update-many', async (req, res, next) => {
  *         name: trackingNumber
  *         required: true
  *         schema:
- *           type: number
+ *           type: string
  *         description: The tracking number of the package
  *     requestBody:
  *       required: true
@@ -737,7 +739,7 @@ Package_Tracking.post('/update-many', async (req, res, next) => {
  *                 description: Image file to upload
  *     responses:
  *       200:
- *         description: Image uploaded successfully
+ *         description: ID_Proof uploaded successfully
  *         content:
  *           application/json:
  *             schema:
@@ -749,7 +751,7 @@ Package_Tracking.post('/update-many', async (req, res, next) => {
  *                   type: object
  *                   $ref: '#/components/schemas/Package'
  *       400:
- *         description: Image file is required or invalid input
+ *         description: ID_Proof file is required or invalid input
  *       404:
  *         description: Package not found
  *       500:
@@ -757,21 +759,20 @@ Package_Tracking.post('/update-many', async (req, res, next) => {
  */
 
 // Add image
-Package_Tracking.post('/:trackingNumber/add_image', imageUpload.single('file'), async (req, res) => {
+Package_Tracking.post('/:trackingNumber/ID_Proof', fileUpload.single('file'), async (req, res) => {
   try {
     const { trackingNumber } = req.params;
 
     if (!req.file) {
-      return res.status(400).json({ error: 'Image file is required.' });
+      return res.status(400).json({ error: 'file is required.' });
     }
 
     const pkg = await Package.findOneAndUpdate(
       { TrackingNumber: trackingNumber },
       {
-        Image: {
-          data: req.file.buffer,
-          contentType: req.file.mimetype,
-        },
+        'ID_proof.data': req.file.buffer,
+        'ID_proof.contentType': req.file.mimetype,
+        'ID_proof.size': req.file.size,
       },
       { new: true }
     );
@@ -780,7 +781,14 @@ Package_Tracking.post('/:trackingNumber/add_image', imageUpload.single('file'), 
       return res.status(404).json({ error: 'Package not found.' });
     }
 
-    res.status(200).json({ message: 'Image uploaded successfully', pkg });
+    res.status(200).json({
+      message: 'ID proof uploaded successfully',
+      fileDetails: {
+        originalName: req.file.originalname,
+        size: req.file.size,
+        contentType: req.file.mimetype,
+      },
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -788,9 +796,9 @@ Package_Tracking.post('/:trackingNumber/add_image', imageUpload.single('file'), 
 
 /**
  * @swagger
- * /packages/{trackingNumber}/get_image:
+ * /packages/{trackingNumber}/ID_Proof:
  *   get:
- *     summary: Retrieve the image for a package
+ *     summary: Retrieve the ID_Proof for a package
  *     tags:
  *       - Packages
  *     parameters:
@@ -798,35 +806,35 @@ Package_Tracking.post('/:trackingNumber/add_image', imageUpload.single('file'), 
  *         name: trackingNumber
  *         required: true
  *         schema:
- *           type: number
+ *           type: string
  *         description: The tracking number of the package
  *     responses:
  *       200:
- *         description: Image retrieved successfully
+ *         description: ID_Proof retrieved successfully
  *         content:
  *           image/*:
  *             schema:
  *               type: string
  *               format: binary
  *       404:
- *         description: Image not found for the given package
+ *         description: ID_Proof not found for the given package
  *       500:
  *         description: Server error
  */
 
 // Get image
-Package_Tracking.get('/:trackingNumber/get_image', async (req, res) => {
+Package_Tracking.get('/:trackingNumber/ID_Proof', async (req, res) => {
   try {
     const { trackingNumber } = req.params;
 
     const pkg = await Package.findOne({ TrackingNumber: trackingNumber });
 
-    if (!pkg || !pkg.Image) {
-      return res.status(404).json({ error: 'Image not found for this package.' });
+    if (!pkg || !pkg.ID_proof || !pkg.ID_proof.data) {
+      return res.status(404).json({ error: 'ID_Proof not found for this package.' });
     }
 
-    res.set('Content-Type', pkg.Image.contentType);
-    res.send(pkg.Image.data);
+    res.set('Content-Type', pkg.ID_proof.contentType);
+    res.send(pkg.ID_proof.data);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -834,9 +842,9 @@ Package_Tracking.get('/:trackingNumber/get_image', async (req, res) => {
 
 /**
  * @swagger
- * /packages/{trackingNumber}/delete_image:
+ * /packages/{trackingNumber}/delete_ID_Proof:
  *   delete:
- *     summary: Delete the image for a package
+ *     summary: Delete the ID_Proof for a package
  *     tags:
  *       - Packages
  *     parameters:
@@ -844,11 +852,11 @@ Package_Tracking.get('/:trackingNumber/get_image', async (req, res) => {
  *         name: trackingNumber
  *         required: true
  *         schema:
- *           type: number
+ *           type: string
  *         description: The tracking number of the package
  *     responses:
  *       200:
- *         description: Image deleted successfully
+ *         description: ID_Proof deleted successfully
  *         content:
  *           application/json:
  *             schema:
@@ -866,13 +874,13 @@ Package_Tracking.get('/:trackingNumber/get_image', async (req, res) => {
  */
 
 // Delete image
-Package_Tracking.delete('/:trackingNumber/delete_image', async (req, res) => {
+Package_Tracking.delete('/:trackingNumber/delete_ID_Proof', async (req, res) => {
   try {
     const { trackingNumber } = req.params;
 
     const pkg = await Package.findOneAndUpdate(
       { TrackingNumber: trackingNumber },
-      { $unset: { Image: "" } },
+      { $unset: { 'ID_proof.data': '', 'ID_proof.contentType': '', 'ID_proof.size': '' } },
       { new: true }
     );
 
@@ -880,11 +888,13 @@ Package_Tracking.delete('/:trackingNumber/delete_image', async (req, res) => {
       return res.status(404).json({ error: 'Package not found.' });
     }
 
-    res.status(200).json({ message: 'Image deleted successfully', pkg });
+    res.status(200).json({ message: 'ID_Proof deleted successfully', package: pkg });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
+
+
 
 
 module.exports = Package_Tracking;

@@ -59,31 +59,34 @@ const PackageSchema = new mongoose.Schema({
     get: v => `$${v.toFixed(2)}`,
     set: v => parseFloat(v),
     },
-    Image: {
-        data: {
-          type: Buffer,
-          validate: {
-            validator: function (v) {
-              return v && v.length > 0;
-            },
+    ID_proof: {
+      data: {
+        type: Buffer, // Supports binary data for both images and PDFs
+        validate: {
+          validator: function (v) {
+            return v && v.length > 0;
           },
+          message: 'Data is required and cannot be empty.',
         },
-        contentType: {
-          type: String,
-          enum: {
-            values: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
-            message: 'Only JPEG, PNG, GIF, and WebP image formats are allowed.',
+      },
+      contentType: {
+        type: String,
+        enum: {
+          values: ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'],
+          message: 'Only JPEG, PNG, GIF, WebP, and PDF formats are allowed.',
+        },
+        required: true,
+      },
+      size: {
+        type: Number,
+        validate: {
+          validator: function (v) {
+            return v <= 5 * 1024 * 1024; // 5 MB limit
           },
+          message: 'File size must be less than 5 MB.',
         },
-        size: {
-          type: Number,
-          validate: {
-            validator: function (v) {
-              return v <= 5 * 1024 * 1024; // 5 MB limit
-            },
-            message: 'Image size must be less than 5 MB.',
-          },
-        },
+        required: true,
+      },
     },
 });
 

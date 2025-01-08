@@ -9,12 +9,14 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 }, // Max file size: 10MB
 });
  
-const imageUpload = multer({
+const fileUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 }, // Limit file size to 5MB
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB limit
   fileFilter: (req, file, cb) => {
-    if (!file.mimetype.startsWith('image/')) {
-      cb(new Error('Only image files are allowed!'));
+    // Accept images and PDF files
+    const allowedMimes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
+    if (!allowedMimes.includes(file.mimetype)) {
+      cb(new Error('Only image files (JPEG, PNG, GIF, WebP) and PDF files are allowed!'));
     } else {
       cb(null, true);
     }
@@ -641,7 +643,7 @@ router.post('/update-many', async (req, res, next) => {
 
 /**
  * @swagger
- * /recipients/{RecipientContact}/add_image:
+ * /recipients/{RecipientContact}/ID_Proof:
  *   post:
  *     summary: Upload or update an ID proof image for a recipient
  *     tags:
@@ -663,10 +665,10 @@ router.post('/update-many', async (req, res, next) => {
  *               image:
  *                 type: string
  *                 format: binary
- *                 description: ID proof image file
+ *                 description: ID proof file
  *     responses:
  *       200:
- *         description: Image uploaded successfully
+ *         description: ID_Proof uploaded successfully
  *         content:
  *           application/json:
  *             schema:
@@ -678,55 +680,31 @@ router.post('/update-many', async (req, res, next) => {
  *                   type: object
  *                   $ref: '#/components/schemas/Recipient'
  *       400:
- *         description: Image file is required or invalid input
+ *         description: ID_Proof file is required or invalid input
  *       404:
  *         description: Recipient not found
  *       500:
  *         description: Server error
  * 
- * /recipients/{RecipientContact}/get_image:
- *   get:
- *     summary: Retrieve the ID proof image of a recipient
- *     tags:
- *       - Recipients
- *     parameters:
- *       - in: path
- *         name: RecipientContact
- *         required: true
- *         schema:
- *           type: number
- *         description: Contact number of the recipient
- *     responses:
- *       200:
- *         description: Image retrieved successfully
- *         content:
- *           image/*:
- *             schema:
- *               type: string
- *               format: binary
- *       404:
- *         description: Image not found for the given recipient
- *       500:
- *         description: Server error
+ * 
  */
 
 
 
-router.post('/:RecipientContact/add_image', imageUpload.single('image'), async (req, res) => {
+router.post('/:RecipientContact/ID_Proof', fileUpload.single('image'), async (req, res) => {
   try {
     const { RecipientContact } = req.params;
 
     if (!req.file) {
-      return res.status(400).json({ error: 'Image file is required.' });
+      return res.status(400).json({ error: 'file is required.' });
     }
 
     const recipient = await Recipient.findOneAndUpdate(
       { RecipientContact },
       {
-        Image: {
-          data: req.file.buffer,
-          contentType: req.file.mimetype,
-        },
+        'ID_proof.data': req.file.buffer,
+        'ID_proof.contentType': req.file.mimetype,
+        'ID_proof.size': req.file.size,
       },
       { new: true }
     );
@@ -735,15 +713,24 @@ router.post('/:RecipientContact/add_image', imageUpload.single('image'), async (
       return res.status(404).json({ error: 'Recipient not found.' });
     }
 
-    res.status(200).json({ message: 'Image uploaded successfully', recipient });
+    res.status(200).json({
+      message: 'ID proof uploaded successfully',
+      fileDetails: {
+        originalName: req.file.originalname,
+        size: req.file.size,
+        contentType: req.file.mimetype,
+      },
+    });
   } catch (error) {
+    console.log(error)
     res.status(500).json({ error: error.message });
   }
 });
 
+
 /**
  * @swagger
- * /recipients/{RecipientContact}/get_image:
+ * /recipients/{RecipientContact}/ID_Proof:
  *   get:
  *     summary: Retrieve the ID proof image of a recipient
  *     tags:
@@ -757,41 +744,42 @@ router.post('/:RecipientContact/add_image', imageUpload.single('image'), async (
  *         description: Contact number of the recipient
  *     responses:
  *       200:
- *         description: Image retrieved successfully
+ *         description: ID_Proof retrieved successfully
  *         content:
  *           image/*:
  *             schema:
  *               type: string
  *               format: binary
  *       404:
- *         description: Image not found for the given recipient
+ *         description: ID_Proof not found for the given recipient
  *       500:
  *         description: Server error
  */
 
-// Get image
-router.get('/:RecipientContact/get_image', async (req, res) => {
+
+router.get('/:RecipientContact/ID_Proof', async (req, res) => {
   try {
     const { RecipientContact } = req.params;
 
     const recipient = await Recipient.findOne({ RecipientContact });
 
-    if (!recipient || !recipient.Image) {
-      return res.status(404).json({ error: 'Image not found for the given recipient.' });
+    if (!recipient || !recipient.ID_proof || !recipient.ID_proof.data) {
+      return res.status(404).json({ error: 'ID_Proof not found for the given recipient.' });
     }
 
-    res.set('Content-Type', recipient.Image.contentType);
-    res.send(recipient.Image.data);
+    res.set('Content-Type', recipient.ID_proof.contentType);
+    res.send(recipient.ID_proof.data);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
+// Swagger for deleting the image
 /**
  * @swagger
- * /recipients/{RecipientContact}/delete_image:
+ * /recipients/{RecipientContact}/delete_ID_Proof:
  *   delete:
- *     summary: Delete the ID proof image of a recipient
+ *     summary: Delete the ID proof of a recipient
  *     tags:
  *       - Recipients
  *     parameters:
@@ -803,7 +791,7 @@ router.get('/:RecipientContact/get_image', async (req, res) => {
  *         description: Contact number of the recipient
  *     responses:
  *       200:
- *         description: Image deleted successfully
+ *         description: ID_Proof deleted successfully
  *         content:
  *           application/json:
  *             schema:
@@ -820,14 +808,14 @@ router.get('/:RecipientContact/get_image', async (req, res) => {
  *         description: Server error
  */
 
-// Delete image
-router.delete('/:RecipientContact/delete_image', async (req, res) => {
+
+router.delete('/:RecipientContact/delete_ID_Proof', async (req, res) => {
   try {
     const { RecipientContact } = req.params;
 
     const recipient = await Recipient.findOneAndUpdate(
       { RecipientContact },
-      { $unset: { Image: "" } },
+      { $unset: { 'ID_proof.data': '', 'ID_proof.contentType': '', 'ID_proof.size': '' } },
       { new: true }
     );
 
@@ -835,7 +823,7 @@ router.delete('/:RecipientContact/delete_image', async (req, res) => {
       return res.status(404).json({ error: 'Recipient not found.' });
     }
 
-    res.status(200).json({ message: 'Image deleted successfully', recipient });
+    res.status(200).json({ message: 'ID_Proof deleted successfully', recipient });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
