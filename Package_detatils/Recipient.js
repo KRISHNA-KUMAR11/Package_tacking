@@ -51,33 +51,28 @@ const RecipientSchema = new mongoose.Schema({
     },
     ID_proof: {
       data: {
-        type: Buffer, // Supports binary data for both images and PDFs
-        validate: {
-          validator: function (v) {
-            return v && v.length > 0;
-          },
-          message: 'Data is required and cannot be empty.',
-        },
+          type: Buffer,
+          default: Buffer.alloc(0), // Initialize with empty buffer
       },
       contentType: {
-        type: String,
-        enum: {
-          values: ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'],
-          message: 'Only JPEG, PNG, GIF, WebP, and PDF formats are allowed.',
-        },
-        required: true,
+          type: String,
+          enum: {
+              values: ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'],
+              message: 'Only JPEG, PNG, GIF, WebP, and PDF formats are allowed.',
+          },
+          default: 'application/pdf'
       },
       size: {
-        type: Number,
-        validate: {
-          validator: function (v) {
-            return v <= 5 * 1024 * 1024; // 5 MB limit
+          type: Number,
+          default: 0,
+          validate: {
+              validator: function(v) {
+                      return v <= 5 * 1024 * 1024; // 5 MB limit
+              },
+              message: 'File size must be less than 5 MB.',
           },
-          message: 'File size must be less than 5 MB.',
-        },
-        required: true,
       },
-    },
+    }
   });
 
 

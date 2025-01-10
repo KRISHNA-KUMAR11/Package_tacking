@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const PackageSchema = new mongoose.Schema({
-    TrackingNumber: { type: Number, required:true, unique: true, },
+    TrackingNumber: { type: Number, unique: true, },
     Status: { type: String, required: true, enum: ['pending', 'in-transit', 'delivered', 'not delivered']},
     Send_Date: { type: Date, default: Date.now },
     SenderName: { type: String, required: true,
@@ -61,34 +61,57 @@ const PackageSchema = new mongoose.Schema({
     },
     ID_proof: {
       data: {
-        type: Buffer, // Supports binary data for both images and PDFs
-        validate: {
-          validator: function (v) {
-            return v && v.length > 0;
-          },
-          message: 'Data is required and cannot be empty.',
-        },
+          type: Buffer,
+          default: Buffer.alloc(0), // Initialize with empty buffer
       },
       contentType: {
-        type: String,
-        enum: {
-          values: ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'],
-          message: 'Only JPEG, PNG, GIF, WebP, and PDF formats are allowed.',
-        },
-        required: true,
+          type: String,
+          enum: {
+              values: ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'],
+              message: 'Only JPEG, PNG, GIF, WebP, and PDF formats are allowed.',
+          },
+          default: 'application/pdf'
       },
       size: {
-        type: Number,
-        validate: {
-          validator: function (v) {
-            return v <= 5 * 1024 * 1024; // 5 MB limit
+          type: Number,
+          default: 0,
+          validate: {
+              validator: function(v) {
+                      return v <= 5 * 1024 * 1024; // 5 MB limit
+              },
+              message: 'File size must be less than 5 MB.',
           },
-          message: 'File size must be less than 5 MB.',
-        },
-        required: true,
       },
-    },
+    }
 });
+
+
+// 🔄 Pre-save hook to auto-generate the TrackingNumber
+PackageSchema.pre('save', async function (next) {
+  const doc = this;
+  if (!doc.isNew) return next();
+
+  try {
+      const lastPackage = await mongoose.model('Package_details').findOne().sort({ TrackingNumber: -1 }).exec();
+      const nextTrackingNumber = lastPackage ? lastPackage.TrackingNumber + 1 : 1;
+      doc.TrackingNumber = nextTrackingNumber;
+      next();
+  } catch (err) {
+      next(err);
+  }
+});
+
+PackageSchema.methods.validateIDProof = function() {
+  if (this.ID_proof.data && this.ID_proof.data.length > 0) {
+      if (this.ID_proof.size > 5 * 1024 * 1024) {
+          throw new Error('File size must be less than 5 MB.');
+      }
+      if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'].includes(this.ID_proof.contentType)) {
+          throw new Error('Invalid file type.');
+      }
+  }
+  return true;
+};
 
 module.exports = mongoose.model('Package_details', PackageSchema);
 

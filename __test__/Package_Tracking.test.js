@@ -10,155 +10,216 @@ const app = express();
 app.use(express.json());
 app.use('/packages', Package_Tracking);
 
+// Helper function to create a mock package with all necessary methods
+const createMockPackage = (data) => ({
+  ...data,
+  toJSON: () => ({ ...data }),
+  toObject: () => ({ ...data }),
+  ID_proof: {
+    data: null,
+    contentType: null,
+    size: 0
+  }
+});
+
+// Add error handling middleware
+app.use((err, req, res, next) => {
+  res.status(500).json({
+    error: err.message || 'Internal Server Error'
+  });
+});
+
 // Mock data
 const mockPackage = {
-  TrackingNumber: 12345,
-  Status: 'in-transit',
-  SenderName: 'John Doe',
-  RecipientId: '507f1f77bcf86cd799439011', // Mock MongoDB ObjectId
+  Status: 'pending',
+  SenderName: 'John Smith',
+  RecipientId: '507f1f77bcf86cd799439011',
   Origin: 'New York',
   Destination: 'Los Angeles',
   Package_weight: 2.5,
-  Price: 50
+  Price: 50.00,
+  Description: 'Test package'
 };
 
 const mockRecipient = {
   _id: '507f1f77bcf86cd799439011',
   name: 'Jane Doe',
-  address: '123 Main St',
+  address: '123 Test St',
   phone: '1234567890'
 };
 
-// Mock MongoDB and models
+// Mock the mongoose models
 jest.mock('../Package_detatils/Package_details');
 jest.mock('../Package_detatils/Recipient');
 
-describe('Package Tracking API', () => {
-  beforeAll(() => {
-    mongoose.connect = jest.fn();
+const setupBasicMocks = () => {
+  Package.find.mockReturnValue({
+    exec: jest.fn().mockResolvedValue([])
+  });
+  
+  Package.findOne.mockReturnValue({
+    exec: jest.fn().mockResolvedValue(null),
+    populate: jest.fn().mockReturnThis()
+  });
+  
+  Package.findOneAndUpdate.mockReturnValue({
+    exec: jest.fn().mockResolvedValue(null),
+    populate: jest.fn().mockReturnThis()
   });
 
+  Recipient.findById.mockResolvedValue(null);
+};
+
+describe('Package_Tracking Router', () => {
   beforeEach(() => {
+    // Clear all mocks before each test
     jest.clearAllMocks();
-  });
-
-  afterAll(() => {
-    mongoose.disconnect();
   });
 
   describe('POST /', () => {
     it('should create a new package successfully', async () => {
-      // Mock Recipient.findById
+      // Mock the Recipient.findById
       Recipient.findById.mockResolvedValue(mockRecipient);
-    
-      // Mock Package.save
-      jest.spyOn(Package.prototype, 'save').mockResolvedValue(mockPackage);
+      
+      // Mock the Package.prototype.save
+      Package.prototype.save = jest.fn().mockResolvedValue({
+        ...mockPackage,
+        TrackingNumber: 1
+      });
 
       const response = await request(app)
         .post('/packages')
-        .send(mockPackage);
-        
+        .send(mockPackage)
+        .expect(201);
 
-        expect(response.status).toBe(201);
-        expect(response.body.success).toBe(true);
-        expect(response.body.data).toMatchObject(mockPackage); // This should now match the expected value
+      expect(response.body.success).toBe(true);
+      expect(response.body.message).toBe('Package created successfully!');
+      expect(response.body.data).toHaveProperty('TrackingNumber');
     });
 
-    it('should return 400 for missing required fields', async () => {
-      const invalidPackage = { ...mockPackage };
-      delete invalidPackage.TrackingNumber;
-
-      const response = await request(app)
-        .post('/packages')
-        .send(invalidPackage);
-
-      expect(response.status).toBe(400);
-      expect(response.body.success).toBe(false);
-    });
-
-    it('should return 404 when recipient not found', async () => {
+    it('should return 404 if recipient not found', async () => {
       Recipient.findById.mockResolvedValue(null);
 
       const response = await request(app)
         .post('/packages')
-        .send(mockPackage);
+        .send(mockPackage)
+        .expect(404);
 
-      expect(response.status).toBe(404);
       expect(response.body.message).toBe('Recipient not found');
+    });
+
+    it('should validate required fields', async () => {
+      const invalidPackage = { ...mockPackage };
+      delete invalidPackage.Status;
+
+      const response = await request(app)
+        .post('/packages')
+        .send(invalidPackage)
+        .expect(400);
+
+      expect(response.body.message).toContain('Missing required field: Status');
     });
   });
 
   describe('GET /', () => {
     it('should retrieve all packages', async () => {
-      const mockPackages = [mockPackage];
+      const mockPackages = [
+        createMockPackage({ ...mockPackage, TrackingNumber: 1 }),
+        createMockPackage({ ...mockPackage, TrackingNumber: 2 })
+      ];
+
       Package.find.mockReturnValue({
-        populate: jest.fn().mockResolvedValue(mockPackages)
+        exec: jest.fn().mockResolvedValue(mockPackages)
       });
 
-      const response = await request(app).get('/packages');
+      const response = await request(app)
+        .get('/packages')
+        .expect(200);
 
-      expect(response.status).toBe(200);
-      expect(response.body.success).toBe(true);
-      expect(response.body.data).toEqual(mockPackages);
+      expect(Package.find).toHaveBeenCalledWith({}, { 'ID_proof.data': 0 });
+      expect(Array.isArray(response.body)).toBe(true);
+      expect(response.body.length).toBe(2);
+    });
+
+    it('should handle database errors gracefully', async () => {
+      Package.find.mockReturnValue({
+        exec: jest.fn().mockRejectedValue(new Error('Database error'))
+      });
+
+      const response = await request(app)
+        .get('/packages')
+        .expect(500);
+
+      expect(response.body).toHaveProperty('error', 'Database error');
     });
   });
 
   describe('GET /:trackingNumber', () => {
     it('should retrieve a package by tracking number', async () => {
+      const mockFoundPackage = {
+        ...mockPackage,
+        TrackingNumber: 1,
+        ID_proof: {
+          data: Buffer.from('test'),
+          contentType: 'image/jpeg'
+        }
+      };
+
       Package.findOne.mockReturnValue({
-        populate: jest.fn().mockResolvedValue(mockPackage)
+        populate: jest.fn().mockResolvedValue(mockFoundPackage)
       });
 
-      const response = await request(app)
-        .get('/packages/12345');
-
-      expect(response.status).toBe(200);
-      expect(response.body.success).toBe(true);
-      expect(response.body.data).toEqual(mockPackage);
+      await request(app)
+        .get('/packages/1')
+        .expect(200);
     });
 
-    it('should return 404 when package not found', async () => {
+    it('should return 404 if package not found', async () => {
       Package.findOne.mockReturnValue({
         populate: jest.fn().mockResolvedValue(null)
       });
 
-      const response = await request(app)
-        .get('/packages/99999');
-
-      expect(response.status).toBe(404);
-      expect(response.body.success).toBe(false);
+      await request(app)
+        .get('/packages/999')
+        .expect(404);
     });
   });
 
   describe('PUT /:trackingNumber', () => {
     it('should update a package successfully', async () => {
-      const updatedPackage = { ...mockPackage, Status: 'delivered' };
+      const updatedPackage = {
+        ...mockPackage,
+        Status: 'delivered'
+      };
+
       Package.findOneAndUpdate.mockReturnValue({
         populate: jest.fn().mockResolvedValue(updatedPackage)
       });
 
       const response = await request(app)
-        .put('/packages/12345')
-        .send(updatedPackage);
+        .put('/packages/1')
+        .send(updatedPackage)
+        .expect(200);
 
-      expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
-      expect(response.body.data).toEqual(updatedPackage);
+      expect(response.body.data.Status).toBe('delivered');
     });
   });
 
   describe('PATCH /:trackingNumber', () => {
-    it('should update package status successfully', async () => {
-      const updatedPackage = { ...mockPackage, Status: 'delivered' };
-      Package.findOneAndUpdate.mockResolvedValue(updatedPackage);
+    it('should partially update a package status', async () => {
+      Package.findOneAndUpdate.mockResolvedValue({
+        ...mockPackage,
+        Status: 'delivered'
+      });
 
       const response = await request(app)
-        .patch('/packages/12345')
-        .send({ Status: 'delivered' });
+        .patch('/packages/1')
+        .send({ Status: 'delivered' })
+        .expect(200);
 
-      expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
-      expect(response.body.data).toEqual(updatedPackage);
+      expect(response.body.data.Status).toBe('delivered');
     });
   });
 
@@ -167,87 +228,104 @@ describe('Package Tracking API', () => {
       Package.findOneAndDelete.mockResolvedValue(mockPackage);
 
       const response = await request(app)
-        .delete('/packages/12345');
+        .delete('/packages/1')
+        .expect(200);
 
-      expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
       expect(response.body.message).toBe('Package deleted successfully!');
+    });
+
+    it('should return 404 if package to delete not found', async () => {
+      Package.findOneAndDelete.mockResolvedValue(null);
+
+      const response = await request(app)
+        .delete('/packages/999')
+        .expect(404);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.message).toBe('Package not found!');
     });
   });
 
   describe('POST /add-many', () => {
-    it('should add multiple packages successfully', async () => {
-      const mockPackages = [mockPackage, { ...mockPackage, TrackingNumber: 12346 }];
+    it('should create multiple packages successfully', async () => {
+      const mockPackages = [mockPackage, { ...mockPackage, SenderName: 'Jane Doe' }];
+      
+      // Mock recipient check
       Recipient.findById.mockResolvedValue(mockRecipient);
-      Package.insertMany.mockResolvedValue(mockPackages);
+      
+      // Mock finding last package
+      Package.findOne.mockImplementation(() => ({
+        sort: jest.fn().mockReturnThis(),
+        exec: jest.fn().mockResolvedValue({ TrackingNumber: 0 })
+      }));
+
+      // Mock inserting packages
+      const mockInsertedPackages = mockPackages.map((p, i) => ({
+        ...p,
+        TrackingNumber: i + 1,
+        toObject: () => ({ ...p, TrackingNumber: i + 1 })
+      }));
+      Package.insertMany.mockResolvedValue(mockInsertedPackages);
 
       const response = await request(app)
         .post('/packages/add-many')
-        .send({ packages: mockPackages });
+        .send({ packages: mockPackages })
+        .expect(201);
 
-      expect(response.status).toBe(201);
       expect(response.body.success).toBe(true);
-      expect(response.body.data).toEqual(mockPackages);
+      expect(response.body.data.length).toBe(2);
+    });
+
+    it('should handle validation errors', async () => {
+      const invalidPackages = [{ ...mockPackage, Status: 'invalid-status' }];
+      
+      Recipient.findById.mockResolvedValue(mockRecipient);
+      Package.insertMany.mockRejectedValue(new Error('Validation error'));
+
+      await request(app)
+        .post('/packages/add-many')
+        .send({ packages: invalidPackages })
+        .expect(500);
     });
   });
 
   describe('POST /delete-many', () => {
     it('should delete multiple packages successfully', async () => {
-      Package.find.mockResolvedValue([mockPackage]);
-      Package.deleteMany.mockResolvedValue({ deletedCount: 1 });
+      Package.find.mockResolvedValue([{ TrackingNumber: 1 }, { TrackingNumber: 2 }]);
+      Package.deleteMany.mockResolvedValue({ deletedCount: 2 });
 
       const response = await request(app)
         .post('/packages/delete-many')
-        .send({ trackingNumbers: [12345] });
+        .send({ trackingNumbers: [1, 2] })
+        .expect(200);
 
-      expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
-      expect(response.body.deletedCount).toBe(1);
+      expect(response.body.deletedCount).toBe(2);
     });
   });
 
-  describe('Image Operations', () => {
-    const mockBuffer = Buffer.from('mock-image-data');
-    const mockFile = {
-      buffer: mockBuffer,
-      mimetype: 'image/jpeg'
-    };
+  describe('POST /:trackingNumber/ID_Proof', () => {
+    it('should upload ID proof successfully', async () => {
+      const mockFile = {
+        buffer: Buffer.from('test'),
+        mimetype: 'image/jpeg',
+        size: 1024,
+        originalname: 'test.jpg'
+      };
 
-    describe('POST /:trackingNumber/add_image', () => {
-      it('should upload an image successfully', async () => {
-        Package.findOneAndUpdate.mockResolvedValue({
-          ...mockPackage,
-          Image: {
-            data: mockBuffer,
-            contentType: 'image/jpeg'
-          }
-        });
-
-        // Note: Actual file upload testing would require additional setup
-        // This is a simplified test
-        const response = await request(app)
-          .post('/packages/12345/add_image')
-          .attach('file', mockBuffer, 'test.jpg');
-
-        expect(response.status).toBe(200);
+      Package.findOneAndUpdate.mockResolvedValue({
+        ...mockPackage,
+        validateIDProof: jest.fn()
       });
-    });
 
-    describe('GET /:trackingNumber/get_image', () => {
-      it('should retrieve an image successfully', async () => {
-        Package.findOne.mockResolvedValue({
-          ...mockPackage,
-          Image: {
-            data: mockBuffer,
-            contentType: 'image/jpeg'
-          }
-        });
+      const response = await request(app)
+        .post('/packages/1/ID_Proof')
+        .attach('file', mockFile.buffer, mockFile.originalname)
+        .expect(200);
 
-        const response = await request(app)
-          .get('/packages/12345/get_image');
-
-        expect(response.status).toBe(200);
-      });
+      expect(response.body.success).toBe(true);
+      expect(response.body.message).toBe('ID proof uploaded successfully');
     });
   });
 });

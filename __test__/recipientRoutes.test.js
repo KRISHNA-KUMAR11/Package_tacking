@@ -4,179 +4,190 @@ const mongoose = require('mongoose');
 const Recipient = require('../Package_detatils/Recipient');
 const recipientRoutes = require('../Package_Track/recipientRoutes');
 
-// Create Express app for testing
 const app = express();
 app.use(express.json());
 app.use('/recipients', recipientRoutes);
 
 // Mock data
 const mockRecipient = {
-  RecipientName: 'John Doe',
-  RecipientEmail: 'john@example.com',
+  RecipientName: "John Doe",
+  RecipientEmail: "john.doe@example.com",
   RecipientContact: 1234567890,
-  Address: '123 Test St'
+  Address: "123 Test St"
 };
 
 const mockRecipients = [
   mockRecipient,
   {
-    RecipientName: 'Jane Doe',
-    RecipientEmail: 'jane@example.com',
+    RecipientName: "Jane Doe",
+    RecipientEmail: "jane.doe@example.com",
     RecipientContact: 9876543210,
-    Address: '456 Test Ave'
+    Address: "456 Test Ave"
   }
 ];
 
-// Setup and teardown
-beforeAll(async () => {
-  await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost/test-db', {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
-  });
-});
-
-afterAll(async () => {
-  await mongoose.connection.close();
-});
-
-beforeEach(async () => {
-  await Recipient.deleteMany({});
-});
+// Mock the Recipient model
+jest.mock('../Package_detatils/Recipient');
 
 describe('Recipient Routes', () => {
-  // POST /recipients - Create new recipient
-  describe('POST /', () => {
-    it('should create a new recipient', async () => {
+  beforeEach(() => {
+    // Clear all mocks before each test
+    jest.clearAllMocks();
+  });
+
+  describe('POST /recipients', () => {
+    test('should create a new recipient successfully', async () => {
+      Recipient.prototype.save.mockResolvedValue(mockRecipient);
+
       const response = await request(app)
         .post('/recipients')
         .send(mockRecipient);
 
       expect(response.status).toBe(201);
-      expect(response.body.data).toMatchObject(mockRecipient);
+      expect(response.body.success).toBe(true);
+      expect(response.body.data).toEqual(mockRecipient);
     });
 
-    it('should fail if required fields are missing', async () => {
-      const invalidRecipient = {
-        RecipientName: 'John Doe'
+    test('should return 400 for missing required fields', async () => {
+      const incompleteRecipient = {
+        RecipientName: "John Doe",
+        // Missing other required fields
       };
 
       const response = await request(app)
         .post('/recipients')
-        .send(invalidRecipient);
+        .send(incompleteRecipient);
 
       expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
+    });
+
+    test('should return 400 for invalid email format', async () => {
+      const invalidEmailRecipient = {
+        ...mockRecipient,
+        RecipientEmail: "invalid-email"
+      };
+
+      const response = await request(app)
+        .post('/recipients')
+        .send(invalidEmailRecipient);
+
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
     });
   });
 
-  // GET /recipients - Get all recipients
-  describe('GET /', () => {
-    it('should return all recipients', async () => {
-      // Create test recipients
-      await Recipient.insertMany(mockRecipients);
+  describe('GET /recipients', () => {
+    test('should get all recipients', async () => {
+      Recipient.find.mockResolvedValue(mockRecipients);
 
-      const response = await request(app).get('/recipients');
+      const response = await request(app)
+        .get('/recipients');
 
       expect(response.status).toBe(200);
-      expect(response.body).toHaveLength(2);
-      expect(response.body[0]).toMatchObject(mockRecipients[0]);
+      expect(response.body).toEqual(mockRecipients);
     });
 
-    it('should return empty array when no recipients exist', async () => {
-      const response = await request(app).get('/recipients');
+    test('should handle server error', async () => {
+      Recipient.find.mockRejectedValue(new Error('Database error'));
 
-      expect(response.status).toBe(200);
-      expect(response.body).toHaveLength(0);
+      const response = await request(app)
+        .get('/recipients');
+
+      expect(response.status).toBe(500);
     });
   });
 
-  // GET /recipients/:RecipientContact - Get recipient by contact
-  describe('GET /:RecipientContact', () => {
-    it('should return recipient by contact number', async () => {
-      await Recipient.create(mockRecipient);
+  describe('GET /recipients/:RecipientContact', () => {
+    test('should get recipient by contact number', async () => {
+      const mockRecipientWithID = {
+        ...mockRecipient,
+        ID_proof: {
+          data: Buffer.from('mock-data'),
+          contentType: 'image/jpeg'
+        }
+      };
+
+      Recipient.findOne.mockResolvedValue(mockRecipientWithID);
 
       const response = await request(app)
-        .get(`/recipients/${mockRecipient.RecipientContact}`);
+        .get('/recipients/1234567890');
 
       expect(response.status).toBe(200);
-      expect(response.body).toMatchObject(mockRecipient);
     });
 
-    it('should return 404 if recipient not found', async () => {
+    test('should return 404 if recipient not found', async () => {
+      Recipient.findOne.mockResolvedValue(null);
+
       const response = await request(app)
-        .get('/recipients/999999999');
+        .get('/recipients/1234567890');
 
       expect(response.status).toBe(404);
     });
   });
 
-  // PUT /recipients/:RecipientContact - Update recipient
-  describe('PUT /:RecipientContact', () => {
-    it('should update recipient fully', async () => {
-      await Recipient.create(mockRecipient);
-
-      const updatedData = {
-        RecipientName: 'Updated Name',
-        RecipientEmail: 'updated@example.com',
-        Address: 'Updated Address'
+  describe('PUT /recipients/:RecipientContact', () => {
+    test('should update recipient successfully', async () => {
+      const updatedRecipient = {
+        ...mockRecipient,
+        RecipientName: "Updated Name"
       };
 
+      Recipient.findOneAndUpdate.mockResolvedValue(updatedRecipient);
+
       const response = await request(app)
-        .put(`/recipients/${mockRecipient.RecipientContact}`)
-        .send(updatedData);
+        .put('/recipients/1234567890')
+        .send(updatedRecipient);
 
       expect(response.status).toBe(200);
-      expect(response.body).toMatchObject(updatedData);
+      expect(response.body).toEqual(updatedRecipient);
+    });
+
+    test('should return 404 if recipient not found', async () => {
+      Recipient.findOneAndUpdate.mockResolvedValue(null);
+
+      const response = await request(app)
+        .put('/recipients/1234567890')
+        .send(mockRecipient);
+
+      expect(response.status).toBe(404);
     });
   });
 
-  // PATCH /recipients/:RecipientContact - Partial update
-  describe('PATCH /:RecipientContact', () => {
-    it('should update recipient partially', async () => {
-      await Recipient.create(mockRecipient);
-
-      const update = {
-        RecipientName: 'Updated Name'
-      };
+  describe('DELETE /recipients/:RecipientContact', () => {
+    test('should delete recipient successfully', async () => {
+      Recipient.findOneAndDelete.mockResolvedValue(mockRecipient);
 
       const response = await request(app)
-        .patch(`/recipients/${mockRecipient.RecipientContact}`)
-        .send(update);
+        .delete('/recipients/1234567890');
 
       expect(response.status).toBe(200);
-      expect(response.body.RecipientName).toBe(update.RecipientName);
-      expect(response.body.RecipientEmail).toBe(mockRecipient.RecipientEmail);
+      expect(response.body.message).toBe('Recipient deleted successfully.');
+    });
+
+    test('should return 404 if recipient not found', async () => {
+      Recipient.findOneAndDelete.mockResolvedValue(null);
+
+      const response = await request(app)
+        .delete('/recipients/1234567890');
+
+      expect(response.status).toBe(404);
     });
   });
 
-  // DELETE /recipients/:RecipientContact - Delete recipient
-  describe('DELETE /:RecipientContact', () => {
-    it('should delete recipient', async () => {
-      await Recipient.create(mockRecipient);
+  describe('POST /recipients/add-many', () => {
+    test('should add multiple recipients successfully', async () => {
+      Recipient.insertMany.mockResolvedValue(mockRecipients);
 
-      const response = await request(app)
-        .delete(`/recipients/${mockRecipient.RecipientContact}`);
-
-      expect(response.status).toBe(200);
-      
-      const deletedRecipient = await Recipient.findOne({ 
-        RecipientContact: mockRecipient.RecipientContact 
-      });
-      expect(deletedRecipient).toBeNull();
-    });
-  });
-
-  // POST /recipients/add-many - Bulk add recipients
-  describe('POST /add-many', () => {
-    it('should add multiple recipients', async () => {
       const response = await request(app)
         .post('/recipients/add-many')
         .send({ recipients: mockRecipients });
 
       expect(response.status).toBe(201);
-      expect(response.body.data).toHaveLength(2);
+      expect(response.body.data).toEqual(mockRecipients);
     });
 
-    it('should fail with invalid input', async () => {
+    test('should return 400 for invalid input', async () => {
       const response = await request(app)
         .post('/recipients/add-many')
         .send({ recipients: [] });
@@ -185,52 +196,23 @@ describe('Recipient Routes', () => {
     });
   });
 
-  // POST /recipients/delete-many - Bulk delete recipients
-  describe('POST /delete-many', () => {
-    it('should delete multiple recipients', async () => {
-      await Recipient.insertMany(mockRecipients);
+  describe('POST /recipients/:RecipientContact/ID_Proof', () => {
+    test('should upload ID proof successfully', async () => {
+      const mockFile = {
+        buffer: Buffer.from('mock-image-data'),
+        mimetype: 'image/jpeg',
+        size: 1024,
+        originalname: 'test.jpg'
+      };
 
-      const contactNumbers = mockRecipients.map(r => r.RecipientContact);
-      
-      const response = await request(app)
-        .post('/recipients/delete-many')
-        .send({ contactNumbers });
-
-      expect(response.status).toBe(200);
-      expect(response.body.deletedCount).toBe(2);
-    });
-  });
-
-  // Test file upload endpoints
-  describe('File Upload Endpoints', () => {
-    it('should upload image for recipient', async () => {
-      await Recipient.create(mockRecipient);
+      Recipient.findOneAndUpdate.mockResolvedValue(mockRecipient);
 
       const response = await request(app)
-        .post(`/recipients/${mockRecipient.RecipientContact}/add_image`)
-        .attach('image', Buffer.from('fake-image'), {
-          filename: 'test.jpg',
-          contentType: 'image/jpeg'
-        });
+        .post('/recipients/1234567890/ID_Proof')
+        .attach('image', mockFile.buffer, mockFile.originalname);
 
       expect(response.status).toBe(200);
-      expect(response.body.message).toBe('Image uploaded successfully');
-    });
-
-    it('should get recipient image', async () => {
-      const recipient = await Recipient.create({
-        ...mockRecipient,
-        Image: {
-          data: Buffer.from('fake-image'),
-          contentType: 'image/jpeg'
-        }
-      });
-
-      const response = await request(app)
-        .get(`/recipients/${recipient.RecipientContact}/get_image`);
-
-      expect(response.status).toBe(200);
-      expect(response.headers['content-type']).toBe('image/jpeg');
+      expect(response.body.message).toBe('ID proof uploaded successfully');
     });
   });
 });

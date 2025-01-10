@@ -94,11 +94,30 @@ const router = express.Router();
 const validateRecipient = (req, res, next) => {
   const { RecipientName, RecipientEmail, RecipientContact, Address } = req.body;
 
+  // Check for missing fields
   if (!RecipientName || !RecipientEmail || !RecipientContact || !Address) {
     return res.status(400).json({
       success: false,
       message: 'Missing required fields',
       requiredFields: ['RecipientName', 'RecipientEmail', 'RecipientContact', 'Address'],
+    });
+  }
+
+  // Validate RecipientEmail using basic regex
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(RecipientEmail)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Invalid email format',
+    });
+  }
+
+  // Validate RecipientContact (ensure it's a string of 10 to 15 digits)
+  const phoneRegex = /^[0-9]{10,15}$/;  // Allows 10 to 15 digits
+  if (!phoneRegex.test(RecipientContact)) {
+    return res.status(400).json({
+      success: false,
+      message: 'RecipientContact must be a string of 10 to 15 digits',
     });
   }
 
@@ -108,7 +127,6 @@ const validateRecipient = (req, res, next) => {
 // Create a recipient
 router.post('/', validateRecipient, async (req, res, next) => {
   try {
-
     const newRecipient = new Recipient(req.body);
     const savedRecipient = await newRecipient.save();
 
@@ -122,6 +140,8 @@ router.post('/', validateRecipient, async (req, res, next) => {
     next(error);
   }
 });
+
+
 
 /**
  * @swagger
@@ -142,15 +162,15 @@ router.post('/', validateRecipient, async (req, res, next) => {
  *         description: Server error
  */
 
-// Get all recipients
 router.get('/', async (req, res, next) => {
   try {
-    const recipients = await Recipient.find();
-    res.json(recipients);
-  } catch (error) {
-    next(error);
+    const recipients = await Recipient.find({}, { 'ID_proof.data': 0 }); // Exclude ID_proof data
+    res.status(200).json(recipients);
+  } catch (err) {
+    res.status(500).send(err.message);
   }
 });
+
 
 
 /**
@@ -163,7 +183,7 @@ router.get('/', async (req, res, next) => {
  *       - in: path
  *         name: RecipientContact
  *         schema:
- *           type: number
+ *           type: string
  *         required: true
  *         description: The recipient's contact number
  *     responses:
@@ -179,18 +199,18 @@ router.get('/', async (req, res, next) => {
 
 router.get('/:RecipientContact', async (req, res) => {
   try {
-      const { RecipientContact } = req.params;
+    const { RecipientContact } = req.params;
 
-      // Find the recipient by contact number
-      const recipient = await Recipient.findOne({ RecipientContact: RecipientContact });
+    const recipient = await Recipient.findOne({ RecipientContact });
 
-      if (!recipient) {
-          return res.status(404).json({ error: 'Recipient not found with the given contact number' });
-      }
-
-      res.status(200).json(recipient);
+    if (!recipient || !recipient.ID_proof.data ) {
+      return res.status(404).send('ID proof not found');
+    }
+    
+    res.set('Content-Type', recipient.ID_proof.contentType);
+    res.send(recipient.ID_proof.data);
   } catch (error) {
-      res.status(500).json({ error: error.message });
+    res.status(500).json({ error: error.message });
   }
 });
 

@@ -21,6 +21,11 @@ describe('Recipient Model Test Suite', () => {
       RecipientEmail: 'johndoe@example.com',
       RecipientContact: 1234567890,
       Address: '123 Main St, New York, NY',
+      ID_proof: {
+        data: Buffer.from('valid-pdf-file'),
+        contentType: 'application/pdf',
+        size: 1024 * 1024, // 1 MB
+      },
     });
 
     const savedRecipient = await validRecipient.save();
@@ -44,9 +49,7 @@ describe('Recipient Model Test Suite', () => {
     }
 
     expect(err).toBeDefined();
-    expect(err.errors['RecipientEmail'].message).toBe(
-      'invalid-email is not a valid email address'
-    );
+    expect(err.errors['RecipientEmail'].message).toBe('invalid-email is not a valid email address');
   });
 
   it('should throw validation error for short address', async () => {
@@ -65,9 +68,7 @@ describe('Recipient Model Test Suite', () => {
     }
 
     expect(err).toBeDefined();
-    expect(err.errors['Address'].message).toBe(
-      'Address must be at least 10 characters long'
-    );
+    expect(err.errors['Address'].message).toBe('Address must be at least 10 characters long');
   });
 
   it('should throw validation error for invalid contact number', async () => {
@@ -86,20 +87,18 @@ describe('Recipient Model Test Suite', () => {
     }
 
     expect(err).toBeDefined();
-    expect(err.errors['RecipientContact'].message).toBe(
-      '12345 is not a valid phone number. Must be 10 to 15 digits long'
-    );
+    expect(err.errors['RecipientContact'].message).toBe('12345 is not a valid phone number. Must be 10 to 15 digits long');
   });
 
-  it('should throw validation error for image size exceeding limit', async () => {
+  it('should throw validation error for ID proof size exceeding limit', async () => {
     const invalidRecipient = new Recipient({
       RecipientName: 'John Doe',
       RecipientEmail: 'johndoe@example.com',
       RecipientContact: 1234567890,
       Address: '123 Main St, New York, NY',
-      Image: {
-        data: Buffer.alloc(6 * 1024 * 1024), // 6 MB image
-        contentType: 'image/png',
+      ID_proof: {
+        data: Buffer.alloc(6 * 1024 * 1024), // 6 MB file
+        contentType: 'application/pdf',
         size: 6 * 1024 * 1024,
       },
     });
@@ -112,17 +111,17 @@ describe('Recipient Model Test Suite', () => {
     }
 
     expect(err).toBeDefined();
-    expect(err.errors['Image.size'].message).toBe('Image size must be less than 5 MB.');
+    expect(err.errors['ID_proof.size'].message).toBe('File size must be less than 5 MB.');
   });
 
-  it('should throw validation error for unsupported image format', async () => {
+  it('should throw validation error for unsupported ID proof format', async () => {
     const invalidRecipient = new Recipient({
       RecipientName: 'John Doe',
       RecipientEmail: 'johndoe@example.com',
       RecipientContact: 1234567890,
       Address: '123 Main St, New York, NY',
-      Image: {
-        data: Buffer.from('test-image'),
+      ID_proof: {
+        data: Buffer.from('test-data'),
         contentType: 'image/bmp', // Unsupported format
         size: 1024,
       },
@@ -136,8 +135,8 @@ describe('Recipient Model Test Suite', () => {
     }
 
     expect(err).toBeDefined();
-    expect(err.errors['Image.contentType'].message).toBe(
-      'Only JPEG, PNG, GIF, and WebP image formats are allowed.'
+    expect(err.errors['ID_proof.contentType'].message).toBe(
+      'Only JPEG, PNG, GIF, WebP, and PDF formats are allowed.'
     );
   });
 });

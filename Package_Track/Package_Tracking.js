@@ -1,6 +1,7 @@
 const express = require('express');
 const Package = require('../Package_detatils/Package_details');
 const Recipient = require('../Package_detatils/Recipient');
+const Package_details = require ('../Package_detatils/Package_details.js')
 const Package_Tracking = express.Router();
 const multer = require('multer'); // File upload middleware
 const path = require('path');
@@ -33,7 +34,6 @@ const fileUpload = multer({
  *     Package:
  *       type: object
  *       required:
- *         - TrackingNumber
  *         - Status
  *         - SenderName
  *         - RecipientId
@@ -44,31 +44,50 @@ const fileUpload = multer({
  *       properties:
  *         TrackingNumber:
  *           type: number
- *           description: The unique tracking number for the package
+ *           description: Auto-generated unique tracking number
  *         Status:
  *           type: string
- *           enum: [pending, in-transit, delivered , not delivered]
- *           description: The current status of the package
+ *           enum: [pending, in-transit, delivered, not delivered]
+ *         Send_Date:
+ *           type: string
+ *           format: date-time
+ *           description: Automatically set to current date
  *         SenderName:
  *           type: string
- *           description: Full name of the sender
+ *           pattern: '^[A-Za-z\s]+$'
+ *           description: Only letters and spaces allowed
  *         RecipientId:
  *           type: string
- *           description: Full name of the recipient
+ *           description: MongoDB ObjectId reference to Recipient
  *         Origin:
  *           type: string
- *           description: Package's origin location
+ *           pattern: '^[A-Za-z\s]+$'
+ *           description: Only letters and spaces allowed
  *         Destination:
  *           type: string
- *           description: Package's destination location
+ *           pattern: '^[A-Za-z\s]+$'
+ *           description: Only letters and spaces allowed
+ *         Description:
+ *           type: string
  *         Package_weight:
  *           type: number
- *           description: Weight of the package in kilograms
+ *           description: Weight in kg with up to 2 decimal places
  *         Price:
  *           type: number
- *           description: Price of the package
+ *           description: Price with up to 2 decimal places
+ *         ID_proof:
+ *           type: object
+ *           properties:
+ *             data:
+ *               type: string
+ *               format: binary
+ *             contentType:
+ *               type: string
+ *               enum: [image/jpeg, image/png, image/gif, image/webp, application/pdf]
+ *             size:
+ *               type: number
+ *               maximum: 5242880
  *       example:
- *         TrackingNumber: 1
  *         Status: "in-transit"
  *         SenderName: "Krishna"
  *         RecipientId: "001"
@@ -115,10 +134,10 @@ const fileUpload = multer({
 
 // Middleware to validate package data
 const validatePackage = (req, res, next) => {
-  const { TrackingNumber, Status, SenderName, RecipientId, Origin, Destination, Package_weight, Price } = req.body;
+  const { Status, SenderName, RecipientId, Origin, Destination, Package_weight, Price } = req.body;
 
-  const requiredFields = ['TrackingNumber', 'Status', 'SenderName', 'RecipientId', 'Origin', 'Destination', 'Package_weight', 'Price'];
-
+  const requiredFields = ['Status', 'SenderName', 'RecipientId', 'Origin', 'Destination', 'Package_weight', 'Price'];
+  
   // Check for missing fields
   for (const field of requiredFields) {
     if (!req.body[field]) {
@@ -139,18 +158,46 @@ const validatePackage = (req, res, next) => {
     });
   }
 
-  // Validate numeric fields
-  if (typeof TrackingNumber !== 'number' || typeof Package_weight !== 'number' || typeof Price !== 'number') {
+  // Validate name fields format (letters and spaces only)
+  const nameRegex = /^[A-Za-z\s]+$/;
+  if (!nameRegex.test(SenderName)) {
     return res.status(400).json({
       success: false,
-      message: 'TrackingNumber, Package_weight, and Price must be numbers',
+      message: 'SenderName must contain only letters and spaces',
+    });
+  }
+  if (!nameRegex.test(Origin)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Origin must contain only letters and spaces',
+    });
+  }
+  if (!nameRegex.test(Destination)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Destination must contain only letters and spaces',
+    });
+  }
+
+  // Validate numeric fields
+  if (typeof Package_weight !== 'number' || !/^\d+(\.\d{1,2})?$/.test(Package_weight.toFixed(2)) || Package_weight <= 0) {
+    return res.status(400).json({
+      success: false,
+      message: 'Package_weight must be a positive number with up to 2 decimal places',
+    });
+  }
+
+  if (typeof Price !== 'number' || !/^\d+(\.\d{1,2})?$/.test(Price.toFixed(2)) || Price <= 0) {
+    return res.status(400).json({
+      success: false,
+      message: 'Price must be a positive number with up to 2 decimal places',
     });
   }
 
   next();
 };
 
-// POST route to create a new package
+
 Package_Tracking.post('/', validatePackage, async (req, res, next) => {
   try {
     const recipient = await Recipient.findById(req.body.RecipientId);
@@ -158,8 +205,9 @@ Package_Tracking.post('/', validatePackage, async (req, res, next) => {
       return res.status(404).json({ message: 'Recipient not found' });
     }
 
-    // Save the new package
+    // Initialize ID_proof with required fields
     const newPackage = new Package(req.body);
+
     const savedPackage = await newPackage.save();
 
     res.status(201).json({
@@ -172,7 +220,7 @@ Package_Tracking.post('/', validatePackage, async (req, res, next) => {
   }
 });
 
-  
+
 
 /**
  * @swagger
@@ -191,20 +239,34 @@ Package_Tracking.post('/', validatePackage, async (req, res, next) => {
  *                 $ref: '#/components/schemas/Package'
  */
 
-
-  // Get all packages
-  Package_Tracking.get('/', async (req, res, next) => {
-
-    try {
-      const packages = await Package.find().populate('RecipientId');
-      res.status(200).json({
-        success: true,
-        data: packages,
-      });
-    } catch (error) {
-      return next(error);
-    }
-  });
+// Get all packages
+Package_Tracking.get('/', async (req, res, next) => {
+  try {
+    const packages = await Package.find({}, { 'ID_proof.data': 0 }).exec();
+    
+    const formattedPackages = packages.map(pkg => ({
+      _id: pkg._id,
+      TrackingNumber: pkg.TrackingNumber,
+      Status: pkg.Status,
+      Send_Date: pkg.Send_Date,
+      SenderName: pkg.SenderName,
+      RecipientId: pkg.RecipientId,
+      Origin: pkg.Origin,
+      Destination: pkg.Destination,
+      Description: pkg.Description,
+      Package_weight: pkg.Package_weight,
+      Price: pkg.Price,
+      ID_proof: pkg.ID_proof ? {
+        contentType: pkg.ID_proof.contentType,
+        size: pkg.ID_proof.size,
+      } : null
+    }));
+    
+    res.status(200).json(formattedPackages);
+  } catch (error) {
+    next(error); // Pass error to error handling middleware
+  }
+});
   
   /**
  * @swagger
@@ -236,17 +298,16 @@ Package_Tracking.post('/', validatePackage, async (req, res, next) => {
       const pkg = await Package.findOne({
         TrackingNumber: req.params.trackingNumber,
       }).populate('RecipientId');
-      if (!pkg) {
-        return res.status(404).json({
-          success: false,
-          message: 'Package not found!',
-        });
+      
+      if (!pkg || !pkg.ID_proof.data) {
+        // If package isn't found, return early, preventing further code execution
+        return res.status(404).send('Package not found');
       }
-      res.status(200).json({
-        success: true,
-        data: pkg,
-      });
+      
+      res.set('Content-Type', pkg.ID_proof.contentType);
+      res.send(pkg.ID_proof.data);
     } catch (error) {
+      // If an error occurs, ensure you don't send a response more than once
       return next(error);
     }
   });
@@ -422,30 +483,39 @@ Package_Tracking.post('/', validatePackage, async (req, res, next) => {
  *       500:
  *         description: Some server error
  */
-Package_Tracking.post('/add-many', async (req, res, next) => {
-  try {
-      const { packages } = req.body;
-
-      // Validate if each package has valid recipient ID
-      for (let i = 0; i < packages.length; i++) {
-          const recipient = await Recipient.findById(packages[i].RecipientId);
-          if (!recipient) {
-              return res.status(404).json({ message: `Recipient not found for Package ${i + 1}` });
-          }
-      }
-
-      // Bulk insert packages
-      const result = await Package.insertMany(packages);
-      res.status(201).json({
-          success: true,
-          message: 'Packages created successfully!',
-          data: result,
-      });
-
-  } catch (error) {
-      return next(error);
-  }
-});
+  Package_Tracking.post('/add-many', async (req, res, next) => {
+    try {
+        const { packages } = req.body;
+  
+        // Validate if each package has valid recipient ID
+        for (let i = 0; i < packages.length; i++) {
+            const recipient = await Recipient.findById(packages[i].RecipientId);
+            if (!recipient) {
+                return res.status(404).json({ message: `Recipient not found for Package ${i + 1}` });
+            }
+        }
+  
+        // Manually generate TrackingNumber for each package
+        const lastPackage = await Package_details.findOne().sort({ TrackingNumber: -1 }).exec(); // Correct model used here
+        let nextTrackingNumber = lastPackage ? lastPackage.TrackingNumber + 1 : 1;
+  
+        // Add TrackingNumber to each package
+        for (let i = 0; i < packages.length; i++) {
+            packages[i].TrackingNumber = nextTrackingNumber++;
+        }
+  
+        // Bulk insert packages
+        const result = await Package_details.insertMany(packages); // Correct model used here
+        res.status(201).json({
+            success: true,
+            message: 'Packages created successfully!',
+            data: result,
+        });
+  
+    } catch (error) {
+        return next(error);
+    }
+  });
 
 /**
  * @swagger
@@ -481,26 +551,32 @@ Package_Tracking.post('/import', upload.single('file'), async (req, res, next) =
     }
 
     let packagesData;
-try {
-  packagesData = JSON.parse(req.file.buffer.toString('utf-8')); // Ensure UTF-8 encoding
-} catch (error) {
-  console.error('JSON Parsing Error:', error.message);
-  return res.status(400).json({ error: 'Invalid JSON file content.' });
-}
-
+    try {
+      packagesData = JSON.parse(req.file.buffer.toString('utf-8')); // Ensure UTF-8 encoding
+    } catch (error) {
+      console.error('JSON Parsing Error:', error.message);
+      return res.status(400).json({ error: 'Invalid JSON file content.' });
+    }
 
     if (!Array.isArray(packagesData) || packagesData.length === 0) {
       return res.status(400).json({ error: 'Invalid file content. An array of packages is required.' });
     }
 
+    // Manually generate TrackingNumber for each package
+    const lastPackage = await Package_details.findOne().sort({ TrackingNumber: -1 }).exec(); // Correct model used here
+    let nextTrackingNumber = lastPackage ? lastPackage.TrackingNumber + 1 : 1;
+
+    // Validate each package and assign TrackingNumber
     for (let i = 0; i < packagesData.length; i++) {
       const recipient = await Recipient.findById(packagesData[i].RecipientId);
       if (!recipient) {
         return res.status(404).json({ message: `Recipient not found for Package ${i + 1}` });
       }
+      packagesData[i].TrackingNumber = nextTrackingNumber++;
     }
 
-    const result = await Package.insertMany(packagesData, { ordered: true });
+    // Bulk insert packages
+    const result = await Package_details.insertMany(packagesData, { ordered: true }); // Correct model used here
     res.status(201).json({
       message: 'Packages imported successfully!',
       data: result,
@@ -509,6 +585,7 @@ try {
     next(error);
   }
 });
+
 
 /**
  * @swagger
@@ -761,36 +838,51 @@ Package_Tracking.post('/update-many', async (req, res, next) => {
 // Add image
 Package_Tracking.post('/:trackingNumber/ID_Proof', fileUpload.single('file'), async (req, res) => {
   try {
-    const { trackingNumber } = req.params;
+      const { trackingNumber } = req.params;
 
-    if (!req.file) {
-      return res.status(400).json({ error: 'file is required.' });
-    }
+      if (!req.file) {
+          return res.status(400).json({ 
+              success: false,
+              error: 'ID proof file is required.' 
+          });
+      }
 
-    const pkg = await Package.findOneAndUpdate(
-      { TrackingNumber: trackingNumber },
-      {
-        'ID_proof.data': req.file.buffer,
-        'ID_proof.contentType': req.file.mimetype,
-        'ID_proof.size': req.file.size,
-      },
-      { new: true }
-    );
+      const updateData = {
+          'ID_proof.data': req.file.buffer,
+          'ID_proof.contentType': req.file.mimetype,
+          'ID_proof.size': req.file.size
+      };
 
-    if (!pkg) {
-      return res.status(404).json({ error: 'Package not found.' });
-    }
+      const pkg = await Package.findOneAndUpdate(
+          { TrackingNumber: trackingNumber },
+          updateData,
+          { new: true, runValidators: true }
+      );
 
-    res.status(200).json({
-      message: 'ID proof uploaded successfully',
-      fileDetails: {
-        originalName: req.file.originalname,
-        size: req.file.size,
-        contentType: req.file.mimetype,
-      },
-    });
+      if (!pkg) {
+          return res.status(404).json({ 
+              success: false,
+              error: 'Package not found.' 
+          });
+      }
+
+      // Run custom validation
+      pkg.validateIDProof();
+
+      res.status(200).json({
+          success: true,
+          message: 'ID proof uploaded successfully',
+          fileDetails: {
+              originalName: req.file.originalname,
+              size: req.file.size,
+              contentType: req.file.mimetype,
+          },
+      });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+      res.status(500).json({ 
+          success: false,
+          error: error.message 
+      });
   }
 });
 
