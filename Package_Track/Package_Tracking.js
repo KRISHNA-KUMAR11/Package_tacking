@@ -303,9 +303,21 @@ Package_Tracking.get('/', async (req, res, next) => {
         // If package isn't found, return early, preventing further code execution
         return res.status(404).send('Package not found');
       }
-      
-      res.set('Content-Type', pkg.ID_proof.contentType);
-      res.send(pkg.ID_proof.data);
+
+      // Prepare the package data without the binary ID proof
+    const packageData = {
+      ...pkg._doc,
+      ID_proof: undefined, // Exclude raw binary data from JSON
+    };
+
+    // Send both the package details and ID proof in the same response
+    return res.json({
+      package: packageData,
+      ID_proof: {
+        data: pkg.ID_proof.data.toString('base64'), // Convert binary data to Base64
+        contentType: pkg.ID_proof.contentType,
+      },
+    });
     } catch (error) {
       // If an error occurs, ensure you don't send a response more than once
       return next(error);

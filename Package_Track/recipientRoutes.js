@@ -207,8 +207,19 @@ router.get('/:RecipientContact', async (req, res) => {
       return res.status(404).send('ID proof not found');
     }
     
-    res.set('Content-Type', recipient.ID_proof.contentType);
-    res.send(recipient.ID_proof.data);
+    const recipientData = {
+      ...recipient._doc,
+      ID_proof: undefined, // Exclude raw binary data from JSON
+    };
+
+    // Send both the package details and ID proof in the same response
+    return res.json({
+      package: recipientData,
+      ID_proof: {
+        data: recipient.ID_proof.data.toString('base64'), // Convert binary data to Base64
+        contentType: recipient.ID_proof.contentType,
+      },
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
